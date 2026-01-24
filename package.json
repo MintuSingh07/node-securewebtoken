@@ -15,6 +15,14 @@
   ],
   "author": "Znos",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MintuSingh07/node-securewebtoken.git"
+  },
+  "homepage": "https://securewebtoken.vercel.app/",
+  "bugs": {
+    "url": "https://github.com/MintuSingh07/node-securewebtoken/issues"
+  },
   "files": [
     "dist"
   ],
