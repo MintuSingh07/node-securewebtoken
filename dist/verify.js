@@ -41,6 +41,19 @@ const crypto = __importStar(require("crypto"));
 const decrypt_1 = __importDefault(require("./decrypt"));
 const utils_1 = require("./utils");
 const store_1 = require("./store");
+/**
+ * Verifies and decrypts a Secure Web Token (SWT).
+ *
+ * @param token - The SWT string to verify.
+ * @param secret - The secret key used for decryption and signature verification.
+ * @param options - Verification options.
+ * @param options.sessionId - The session ID to verify against the store (Backend-only mode).
+ * @param options.fingerprint - The device/session fingerprint to verify.
+ * @param options.store - The store type used for session verification.
+ *
+ * @returns The decrypted payload data.
+ * @throws {Error} If the token is invalid, expired, or session verification fails.
+ */
 function verify(token, secret, options = {}) {
     if (!token || typeof token !== "string")
         throw new Error("Token must be string");

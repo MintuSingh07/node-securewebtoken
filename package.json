@@ -1,6 +1,6 @@
 {
   "name": "secure-web-token",
-  "version": "1.2.6",
+  "version": "1.2.7",
   "description": "A secure web token utility",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -19,7 +19,7 @@
     "type": "git",
     "url": "git+https://github.com/MintuSingh07/node-securewebtoken.git"
   },
-  "homepage": "https://securewebtoken.vercel.app/",
+  "homepage": "https://securewebtoken.vercel.app",
   "bugs": {
     "url": "https://github.com/MintuSingh07/node-securewebtoken/issues"
   },
