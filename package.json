@@ -1,6 +1,6 @@
 {
   "name": "secure-web-token",
-  "version": "1.2.5",
+  "version": "1.2.6",
   "description": "A secure web token utility",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
