@@ -1,4 +1,4 @@
-# 🔐 Secure Web Token (SWT)
+# Secure Web Token (SWT)
 
 A **secure, device-bound authentication token system** for Node.js applications.
 
@@ -10,28 +10,28 @@ A **secure, device-bound authentication token system** for Node.js applications.
 
 Unlike JWTs (which are only Base64 encoded), SWT uses **full encryption + server-side session binding**, making stolen tokens useless on other devices.
 
-### Key Highlights ✨
+### Key Highlights
 
-- 🔐 **AES-256-GCM encrypted payloads**
-- 🧷 **Device-bound tokens (single-device login)**
-- 🗄 **Server-side session management**
-- 🍪 **HttpOnly session cookies**
-- ⏱ **Expiry support (`iat`, `exp`)**
-- ⚡ Simple API: `sign()` and `verify()`
-- 🧠 Memory store (Redis-ready design)
+- **AES-256-GCM encrypted payloads**
+- **Device-bound tokens (single-device login)**
+- **Server-side session management**
+- **HttpOnly session cookies**
+- **Expiry support (`iat`, `exp`)**
+- Simple API: `sign()` and `verify()`
+- Memory store (Redis-ready design)
 
 ---
 
 ## 2. What Problem Does It Solve?
 
-### Problems with JWT ❌
+### Problems with JWT
 
 - Payloads are readable (Base64 ≠ encryption)
 - Tokens can be reused on any device
 - No native device binding
 - Logout does not truly invalidate tokens
 
-### How SWT Solves This ✅
+### How SWT Solves This
 
 - Encrypts payload using **AES-256-GCM**
 - Binds tokens to **server-managed device sessions**
