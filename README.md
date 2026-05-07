@@ -1,47 +1,77 @@
-# secure-web-token (SWT)
+<p align="center">
+  <img src="https://raw.githubusercontent.com/MintuSingh07/node-securewebtoken/main/downloads-badge.svg" alt="50K+ Downloads" width="600" />
+</p>
 
-> **The secure alternative to JWT** — encrypted, device-bound, and built for production security.
+<h1 align="center">secure-web-token (SWT)</h1>
 
-[![npm total downloads](https://img.shields.io/badge/downloads-50k%2B-orange?logo=npm)](https://www.npmjs.com/package/secure-web-token)
-[![GitHub stars](https://img.shields.io/github/stars/MintuSingh07/node-securewebtoken?style=flat&logo=github&color=yellow)](https://github.com/MintuSingh07/node-securewebtoken/stargazers)
-[![Node.js](https://img.shields.io/badge/node-%3E%3D25.5.0-green?logo=node.js)](https://www.npmjs.com/package/secure-web-token)
-[![TypeScript](https://img.shields.io/badge/TypeScript-Ready-3178C6?logo=typescript)](https://www.npmjs.com/package/secure-web-token)
-[![Encryption](https://img.shields.io/badge/Encryption-AES--256--GCM-brightgreen)](https://github.com/MintuSingh07/node-securewebtoken)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](https://github.com/MintuSingh07/node-securewebtoken/pulls)
-[![Snyk Vulnerabilities](https://snyk.io/test/github/MintuSingh07/node-securewebtoken/badge.svg)](https://snyk.io/test/github/MintuSingh07/node-securewebtoken)
+<p align="center">
+  <strong>The secure, encrypted, device-bound alternative to JWT — built for Node.js</strong>
+</p>
 
-```bash
-npm install secure-web-token
-```
+<p align="center">
+  <a href="https://www.npmjs.com/package/secure-web-token">
+    <img src="https://img.shields.io/badge/downloads-50k%2B-orange?logo=npm" alt="Downloads" />
+  </a>
+  <a href="https://github.com/MintuSingh07/node-securewebtoken/stargazers">
+    <img src="https://img.shields.io/github/stars/MintuSingh07/node-securewebtoken?style=flat&logo=github&color=yellow" alt="GitHub Stars" />
+  </a>
+  <a href="https://www.npmjs.com/package/secure-web-token">
+    <img src="https://img.shields.io/badge/node-%3E%3D25.5.0-green?logo=node.js" alt="Node.js Version" />
+  </a>
+  <a href="https://www.npmjs.com/package/secure-web-token">
+    <img src="https://img.shields.io/badge/TypeScript-Ready-3178C6?logo=typescript" alt="TypeScript Ready" />
+  </a>
+  <a href="https://github.com/MintuSingh07/node-securewebtoken">
+    <img src="https://img.shields.io/badge/Encryption-AES--256--GCM-brightgreen" alt="AES-256-GCM" />
+  </a>
+  <a href="https://github.com/MintuSingh07/node-securewebtoken/pulls">
+    <img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs Welcome" />
+  </a>
+  <a href="https://snyk.io/test/github/MintuSingh07/node-securewebtoken">
+    <img src="https://snyk.io/test/github/MintuSingh07/node-securewebtoken/badge.svg" alt="Known Vulnerabilities" />
+  </a>
+</p>
+
+<p align="center">
+  <a href="#why-swt">Why SWT?</a> •
+  <a href="#installation">Installation</a> •
+  <a href="#quick-start">Quick Start</a> •
+  <a href="#full-expressjs-example">Full Example</a> •
+  <a href="#swt-vs-jwt--deep-comparison">SWT vs JWT</a> •
+  <a href="#faq">FAQ</a> •
+  <a href="#roadmap">Roadmap</a>
+</p>
 
 ---
 
-## Why SWT? (The JWT Problem)
+## Why SWT?
 
-**JWT has well-known, unfixed security flaws.** If you are using JWT in a security-critical app and have not thought about these, you should stop and read this:
+**JWT has well-known, unfixed security problems.** If you're running a security-critical app — admin panel, SaaS dashboard, fintech, healthcare — and you haven't thought about these, stop and read this.
 
-| Problem | JWT | SWT (Secure Web Token) |
+| Problem | JWT | SWT |
 |---|---|---|
-| Payload encryption | ❌ Base64 only (readable by anyone) | ✅ AES-256-GCM encrypted |
-| Device binding | ❌ Token works on any device | ✅ Bound to one device/session |
-| True logout | ❌ Tokens stay valid after logout | ✅ Server-side revocation |
+| Payload encryption | ❌ Base64 only — readable by anyone | ✅ AES-256-GCM encrypted |
+| Device binding | ❌ Token works on any device, anywhere | ✅ Bound to the original device/session |
+| True logout | ❌ Tokens stay valid after logout | ✅ Instant server-side revocation |
 | Token theft impact | ❌ Stolen token = full account access | ✅ Stolen token is useless on another device |
 | Sensitive data in token | ❌ Visible in browser devtools | ✅ Encrypted, never exposed |
 
-> **If you are storing user roles, permissions, or any sensitive identifiers in a JWT — they are readable by anyone with the token.** SWT fixes this.
+> **If you're storing user roles, permissions, or any sensitive identifiers in a JWT — they're readable by anyone who gets that token.** SWT fixes this at the architecture level.
 
 ---
 
-## What is Secure Web Token (SWT)?
+## What is Secure Web Token?
 
-**Secure Web Token (SWT)** is a Node.js authentication library that replaces JWT with a system that is fundamentally more secure by design:
+**Secure Web Token (SWT)** is a Node.js authentication library that replaces JWT with a system that is fundamentally more secure by design. It solves all four of JWT's critical weaknesses in one package.
 
-1. **AES-256-GCM Encryption** — Your token payload is fully encrypted, not just encoded.
-2. **Device Binding** — Each token is tied to the exact device it was issued to. A stolen token cannot be used from a different device.
-3. **Server-Side Session Management** — Sessions live on the server. Logout actually works.
-4. **HttpOnly Cookie + Token Dual Guard** — Combines the security of HttpOnly cookies with encrypted bearer tokens.
+**How it works:**
 
-**Best suited for:** Admin dashboards, SaaS apps, course platforms, internal tools, healthcare apps, fintech, and any application where a stolen session is unacceptable.
+- 🔐 **AES-256-GCM Encryption** — Your token payload is fully encrypted, not just Base64 encoded. No one can read it without the server secret.
+- 📱 **Device Binding** — Each token is tied to the exact device it was issued to via a server-stored fingerprint. A stolen token cannot be replayed from a different device.
+- 🗄️ **Server-Side Session Management** — Sessions live on the server. Logout actually works — revocation is instant and permanent.
+- 🍪 **HttpOnly Cookie + Token Dual Guard** — The session ID lives in an HttpOnly cookie (XSS-proof), the encrypted payload travels via Authorization header. Neither alone is enough.
+
+**Best suited for:** Admin panels, SaaS dashboards, course platforms, internal tools, healthcare apps, fintech APIs, and any application where a stolen session is unacceptable.
 
 ---
 
@@ -74,13 +104,14 @@ const { token, sessionId } = sign(
   { userId: 1, role: "admin" },
   SECRET,
   {
-    fingerprint: true,   // bind to device
+    fingerprint: true,   // bind to this device
     store: "memory",     // server-side session store
-    expiresIn: 3600,     // 1 hour
+    expiresIn: 3600,     // expires in 1 hour
   }
 );
 
-// Send `token` to client, store `sessionId` in HttpOnly cookie
+// → Send `token` to client
+// → Store `sessionId` in an HttpOnly cookie (never send to client directly)
 ```
 
 ### 2. Verify a Token (Protected Route)
@@ -89,15 +120,23 @@ const { token, sessionId } = sign(
 import { verify, getStore } from "secure-web-token";
 
 const store = getStore("memory");
-const session = store.getSession(sessionId);  // from HttpOnly cookie
+const session = store.getSession(sessionId); // retrieved from HttpOnly cookie
 
 const payload = verify(token, SECRET, {
   sessionId,
-  fingerprint: session.fingerprint,
+  fingerprint: session.fingerprint, // must match original device
   store: "memory",
 });
 
-// payload.data => { userId: 1, role: "admin" }
+// payload.data → { userId: 1, role: "admin" }
+```
+
+### 3. Logout (True Revocation)
+
+```ts
+// Session is deleted server-side — token is immediately dead
+store.deleteSession(sessionId);
+res.clearCookie("swt_session");
 ```
 
 ---
@@ -107,17 +146,22 @@ const payload = verify(token, SECRET, {
 ```ts
 import express from "express";
 import cookieParser from "cookie-parser";
+import cors from "cors";
 import { sign, verify, getStore } from "secure-web-token";
 
 const app = express();
-app.use(express.json());
+app.use(cors({ origin: true, credentials: true }));
 app.use(cookieParser());
+app.use(express.json());
 
 const SECRET = process.env.SWT_SECRET!;
 const store = getStore("memory");
 
-// Login — issue SWT
+// ──────────────────────────────────────────
+// POST /login — Issue a secure session
+// ──────────────────────────────────────────
 app.post("/login", (req, res) => {
+  // Authenticate user here (DB lookup, password check, etc.)
   const user = { userId: 1, name: "Alice", role: "admin" };
 
   const { token, sessionId } = sign(user, SECRET, {
@@ -126,14 +170,20 @@ app.post("/login", (req, res) => {
     expiresIn: 3600,
   });
 
-  // sessionId goes in an HttpOnly cookie — never accessible to JS
-  res.cookie("swt_session", sessionId, { httpOnly: true, secure: true });
+  // sessionId → HttpOnly cookie (invisible to JavaScript, XSS-proof)
+  res.cookie("swt_session", sessionId, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "strict",
+  });
 
-  // Encrypted token goes to client
+  // Encrypted token → client (localStorage or memory)
   res.json({ token });
 });
 
-// Protected route — verify SWT
+// ──────────────────────────────────────────
+// GET /profile — Protected route
+// ──────────────────────────────────────────
 app.get("/profile", (req, res) => {
   try {
     const sessionId = req.cookies.swt_session;
@@ -152,10 +202,12 @@ app.get("/profile", (req, res) => {
   }
 });
 
-// Logout — truly invalidates the session
+// ──────────────────────────────────────────
+// POST /logout — True session revocation
+// ──────────────────────────────────────────
 app.post("/logout", (req, res) => {
   const sessionId = req.cookies.swt_session;
-  store.deleteSession(sessionId);
+  store.deleteSession(sessionId); // token is dead immediately
   res.clearCookie("swt_session");
   res.json({ success: true });
 });
@@ -163,11 +215,60 @@ app.post("/logout", (req, res) => {
 app.listen(4000);
 ```
 
+### Frontend (React)
+
+```tsx
+import { useState } from "react";
+
+function App() {
+  const [user, setUser] = useState(null);
+
+  const login = async () => {
+    const res = await fetch("http://localhost:4000/login", {
+      method: "POST",
+      credentials: "include", // sends/receives the HttpOnly cookie
+    });
+    const { token } = await res.json();
+    localStorage.setItem("swt_token", token);
+  };
+
+  const getProfile = async () => {
+    const token = localStorage.getItem("swt_token");
+    const res = await fetch("http://localhost:4000/profile", {
+      credentials: "include",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    setUser(data.user);
+  };
+
+  const logout = async () => {
+    await fetch("http://localhost:4000/logout", {
+      method: "POST",
+      credentials: "include",
+    });
+    localStorage.removeItem("swt_token");
+    setUser(null);
+  };
+
+  return (
+    <>
+      <button onClick={login}>Login</button>
+      <button onClick={getProfile}>View Profile</button>
+      <button onClick={logout}>Logout</button>
+      {user && <pre>{JSON.stringify(user, null, 2)}</pre>}
+    </>
+  );
+}
+
+export default App;
+```
+
 ---
 
 ## Token Payload Structure
 
-The payload sent to the client is **fully AES-256-GCM encrypted**. Internally it looks like:
+The payload delivered to the client is **fully AES-256-GCM encrypted**. What lives inside (server-side only):
 
 ```json
 {
@@ -181,88 +282,145 @@ The payload sent to the client is **fully AES-256-GCM encrypted**. Internally it
 }
 ```
 
-Unlike JWT, **this is not readable** by decoding the token in the browser or on another server.
+Unlike JWT, this structure **cannot be decoded in the browser**. There is no `atob()` trick. Without the server secret, it is ciphertext.
 
 ---
 
 ## SWT vs JWT — Deep Comparison
 
-### JWT Security Flaws (Why You Should Replace JWT)
+### The 4 Security Problems with JWT
 
-**1. Payloads are not encrypted.**
-JWT payloads are Base64URL encoded — not encrypted. Anyone who intercepts or steals the token can read the payload. If you store `role: "admin"` in a JWT, an attacker can see it.
+**1. Payloads are not encrypted**
 
-**2. No device binding.**
-A JWT issued to a user in New York can be used from a server in Russia. There is no native mechanism in JWT to prevent this.
+JWT uses Base64URL encoding — not encryption. Anyone with the token can decode the payload instantly:
 
-**3. Logout does not work (by design).**
-JWT is stateless. Once issued, a JWT is valid until it expires — even after the user logs out. The only fix (token blocklist) defeats the purpose of being stateless.
+```js
+// This works on ANY JWT right now — no key required
+JSON.parse(atob(token.split('.')[1]));
+// → { userId: 1, role: "admin", email: "alice@example.com" }
+```
 
-**4. Token theft = full session compromise.**
-If a JWT is stolen via XSS or network interception, the attacker has full access for the token's entire lifetime.
+If your JWT payload leaks (XSS, logs, network interception), all your user data is exposed in plaintext.
 
-### How SWT Fixes Every One of These
+**2. No device binding**
+
+A JWT issued in one country works equally from any other device or server. There is no native way to say "this token belongs to this device." A stolen token is a valid credential — period.
+
+**3. Logout is not real**
+
+JWT is stateless by design. Once issued, a token remains cryptographically valid until it expires — regardless of what you do on the server. Client-side logout (clearing cookies/localStorage) doesn't invalidate the token. An attacker who stole it before logout still has access.
+
+**4. Token theft = full session compromise**
+
+There is no fallback. A stolen JWT gives the attacker the same access as the legitimate user for the token's entire lifetime, with no way to tell them apart.
+
+### How SWT Fixes All Four
 
 | JWT Flaw | SWT Solution |
 |---|---|
-| Readable payload | AES-256-GCM encryption — payload is unreadable without the server secret |
-| No device binding | Device fingerprint stored in server session — token only valid on original device |
-| Logout doesn't work | Server-side session deletion — revocation is instant and permanent |
-| Token theft | Stolen token cannot be used without matching device fingerprint + server session |
+| Readable payload | AES-256-GCM — unreadable without the server secret |
+| No device binding | Device fingerprint stored in server session — wrong device = rejected |
+| Logout doesn't work | `store.deleteSession()` — immediate, permanent revocation |
+| Token theft | Stolen token fails fingerprint check on any other device |
 
----
+### Attack Surface Comparison
 
-## Frequently Asked Questions
+```
+JWT Attack Model:
+  Attacker steals token via XSS
+  → Token is valid anywhere
+  → Full account access until expiry
+  → Nothing you can do
 
-**Q: Is SWT a drop-in replacement for JWT?**
-A: The API is simple and migration is straightforward. Instead of `jwt.sign()` use `swt.sign()`. The main addition is server-side session storage and device fingerprinting.
-
-**Q: What encryption does SWT use?**
-A: AES-256-GCM — the gold standard for symmetric authenticated encryption. The same algorithm used by TLS 1.3.
-
-**Q: Does SWT support Redis?**
-A: The architecture is Redis-ready. The store interface is designed to plug in Redis for production distributed systems.
-
-**Q: Does using server-side sessions make SWT stateful?**
-A: Yes — intentionally. The "stateless = good" assumption of JWT trades security for scalability. SWT recovers security while maintaining a minimal server-side footprint. For most applications, this is the correct tradeoff.
-
-**Q: When should I still use JWT?**
-A: JWT is acceptable for low-security, public-data, short-lived tokens between internal microservices where token interception risk is low. For anything user-facing, SWT is the better choice.
-
-**Q: What Node.js version is required?**
-A: Node.js 16+ (uses native `crypto` module for AES-256-GCM).
+SWT Attack Model:
+  Attacker steals token via XSS
+  → Token requires matching HttpOnly cookie (not stealable via XSS)
+  → Even with both, device fingerprint must match
+  → Session can be revoked server-side instantly
+```
 
 ---
 
 ## Security Architecture
 
 ```
-Client                          Server
-  │                               │
-  │  POST /login                  │
-  ├──────────────────────────────►│
-  │                               │  sign(payload, secret, { fingerprint: true })
-  │                               │  ┌─────────────────────────────────┐
-  │                               │  │ 1. Encrypt payload (AES-256-GCM)│
-  │                               │  │ 2. Generate device fingerprint   │
-  │                               │  │ 3. Store session server-side     │
-  │                               │  └─────────────────────────────────┘
-  │  { token }  +  [HttpOnly Cookie: sessionId]
-  │◄──────────────────────────────┤
-  │                               │
-  │  GET /profile                 │
-  │  Authorization: Bearer <token>│
-  │  Cookie: swt_session=<id>     │
-  ├──────────────────────────────►│
-  │                               │  verify(token, secret, { sessionId, fingerprint })
-  │                               │  ┌─────────────────────────────────┐
-  │                               │  │ 1. Decrypt token                 │
-  │                               │  │ 2. Match device fingerprint      │
-  │                               │  │ 3. Validate server session       │
-  │                               │  └─────────────────────────────────┘
-  │  { user: { ... } }            │
-  │◄──────────────────────────────┤
+Client                              Server
+  │                                   │
+  │  POST /login                      │
+  ├──────────────────────────────────►│
+  │                                   │  sign(payload, secret, { fingerprint: true })
+  │                                   │  ┌───────────────────────────────────┐
+  │                                   │  │ 1. Encrypt payload (AES-256-GCM)  │
+  │                                   │  │ 2. Generate device fingerprint    │
+  │                                   │  │ 3. Store session server-side      │
+  │                                   │  └───────────────────────────────────┘
+  │  { token }  +  Cookie: sessionId  │
+  │◄──────────────────────────────────┤
+  │                                   │
+  │  GET /profile                     │
+  │  Authorization: Bearer <token>    │
+  │  Cookie: swt_session=<id>         │
+  ├──────────────────────────────────►│
+  │                                   │  verify(token, secret, { sessionId, fingerprint })
+  │                                   │  ┌───────────────────────────────────┐
+  │                                   │  │ 1. Decrypt token                  │
+  │                                   │  │ 2. Match device fingerprint       │
+  │                                   │  │ 3. Validate active server session │
+  │                                   │  └───────────────────────────────────┘
+  │  { user: { ... } }                │
+  │◄──────────────────────────────────┤
+  │                                   │
+  │  POST /logout                     │
+  ├──────────────────────────────────►│
+  │                                   │  store.deleteSession(sessionId)
+  │                                   │  → Token is dead. Immediately.
+  │  { success: true }                │
+  │◄──────────────────────────────────┤
 ```
+
+---
+
+## FAQ
+
+**Q: Is SWT a drop-in replacement for JWT?**
+
+Migration is straightforward. Replace `jwt.sign()` with `sign()` from SWT and `jwt.verify()` with `verify()`. The main additions are server-side session storage and device fingerprinting — both handled automatically when you pass `fingerprint: true`.
+
+---
+
+**Q: What encryption algorithm does SWT use?**
+
+AES-256-GCM — the gold standard for symmetric authenticated encryption, recommended by NIST, and the same cipher used in TLS 1.3. It provides both confidentiality and integrity (tamper detection) in a single pass.
+
+---
+
+**Q: Does SWT support Redis for distributed systems?**
+
+The architecture is Redis-ready by design. The session store interface is built to accept pluggable adapters — Redis support is on the roadmap and can be integrated without changing your application code.
+
+---
+
+**Q: SWT is stateful. Isn't stateless better?**
+
+Stateless JWT trades security for scalability. That tradeoff made sense for internal microservices, but not for user-facing auth. SWT uses a minimal server-side footprint — one small session record per active user — which is manageable at any production scale. The security gains far outweigh the overhead.
+
+---
+
+**Q: When should I still use JWT?**
+
+JWT is fine for short-lived, low-sensitivity tokens between internal services where interception risk is low and logout/device binding don't matter. For any user-facing session, SWT is the better choice.
+
+---
+
+**Q: What Node.js version is required?**
+
+Node.js `>=25.5.0`. SWT uses the native `crypto` module for AES-256-GCM — no external cryptography dependencies.
+
+---
+
+**Q: Does SWT prevent XSS attacks entirely?**
+
+SWT significantly reduces the impact of XSS. Because the session ID lives in an HttpOnly cookie, XSS cannot steal it via `document.cookie`. An attacker who steals only the bearer token still can't authenticate without the cookie — and even if they somehow get both, the device fingerprint check provides a third layer of validation.
 
 ---
 
@@ -270,27 +428,39 @@ Client                          Server
 
 - [x] AES-256-GCM payload encryption
 - [x] Device fingerprint binding
-- [x] Memory session store
+- [x] In-memory session store
 - [x] Token expiry (`iat`, `exp`)
 - [ ] Redis session store adapter
-- [ ] Token rotation / refresh
-- [ ] TypeScript types (strict)
-- [ ] Express.js middleware helper
+- [ ] Token rotation / silent refresh
+- [ ] Strict TypeScript types
+- [ ] Express.js middleware helper (`swtMiddleware()`)
 - [ ] Audit log support
+- [ ] React hooks (`useSWT`)
 
 ---
 
 ## Contributing
 
-PRs and issues welcome. If you find a security vulnerability, please open a private security advisory rather than a public issue.
+PRs and issues are welcome. For security vulnerabilities, please open a **private security advisory** on GitHub rather than a public issue.
+
+```bash
+git clone https://github.com/MintuSingh07/node-securewebtoken.git
+cd node-securewebtoken
+npm install
+npm run build
+```
 
 ---
 
 ## License
 
-MIT
+[MIT](./LICENSE) © [MintuSingh07](https://github.com/MintuSingh07)
 
 ---
 
-> **Stop using JWT for sensitive user sessions. Your users deserve better.**  
-> `npm install secure-web-token`
+<p align="center">
+  <strong>Stop using JWT for sensitive user sessions.</strong><br/>
+  Your users deserve encrypted, device-bound, truly revocable auth.
+  <br/><br/>
+  <code>npm install secure-web-token</code>
+</p>
