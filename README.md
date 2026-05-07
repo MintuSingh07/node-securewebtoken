@@ -1,11 +1,15 @@
 <p align="center">
-  <img src="https://res.cloudinary.com/dch9wfmjd/image/upload/v1778126974/downloads-badge_vyp6px.svg" alt="50K+ Downloads" width="600" />
+  <img src="https://res.cloudinary.com/dch9wfmjd/image/upload/v1778127305/logo1_eg2kay.png" alt="Secure Web Token Logo" width="150" />
 </p>
 
 <h1 align="center">secure-web-token (SWT)</h1>
 
 <p align="center">
   <strong>The secure, encrypted, device-bound alternative to JWT — built for Node.js</strong>
+</p>
+
+<p align="center">
+  <img src="https://res.cloudinary.com/dch9wfmjd/image/upload/v1778126974/downloads-badge_vyp6px.svg" alt="50K+ Downloads" width="560" />
 </p>
 
 <p align="center">
