@@ -1,6 +1,8 @@
 <p align="center">
-  <img src="https://res.cloudinary.com/dch9wfmjd/image/upload/v1778127677/varient-1-circle_wykez9.png" alt="Secure Web Token Logo" width="150" />
-  <h1 align="center">secure-web-token (SWT)</h1>
+  <a href="https://www.npmjs.com/package/secure-web-token">
+    <img src="https://res.cloudinary.com/dch9wfmjd/image/upload/v1778127677/varient-1-circle_wykez9.png" alt="Secure Web Token Logo" width="48" style="vertical-align: middle; margin-right: 12px;" />
+  </a>
+  <strong style="font-size: 28px; vertical-align: middle;">secure-web-token (SWT)</strong>
 </p>
 
 <p align="center">
