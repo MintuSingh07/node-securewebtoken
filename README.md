@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://res.cloudinary.com/dch9wfmjd/image/upload/v1778127305/logo1_eg2kay.png" alt="Secure Web Token Logo" width="150" />
+  <img src="https://res.cloudinary.com/dch9wfmjd/image/upload/v1778127677/varient-1-circle_wykez9.png" alt="Secure Web Token Logo" width="150" />
   <h1 align="center">secure-web-token (SWT)</h1>
 </p>
 
