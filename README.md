@@ -2,9 +2,13 @@
 
 > **The secure alternative to JWT** — encrypted, device-bound, and built for production security.
 
-[![npm version](https://img.shields.io/npm/v/secure-web-token)](https://www.npmjs.com/package/secure-web-token)
-[![npm downloads](https://img.shields.io/npm/dm/secure-web-token)](https://www.npmjs.com/package/secure-web-token)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![npm total downloads](https://img.shields.io/badge/downloads-50k%2B-orange?logo=npm)](https://www.npmjs.com/package/secure-web-token)
+[![GitHub stars](https://img.shields.io/github/stars/MintuSingh07/node-securewebtoken?style=flat&logo=github&color=yellow)](https://github.com/MintuSingh07/node-securewebtoken/stargazers)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D25.5.0-green?logo=node.js)](https://www.npmjs.com/package/secure-web-token)
+[![TypeScript](https://img.shields.io/badge/TypeScript-Ready-3178C6?logo=typescript)](https://www.npmjs.com/package/secure-web-token)
+[![Encryption](https://img.shields.io/badge/Encryption-AES--256--GCM-brightgreen)](https://github.com/MintuSingh07/node-securewebtoken)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](https://github.com/MintuSingh07/node-securewebtoken/pulls)
+[![Snyk Vulnerabilities](https://snyk.io/test/github/MintuSingh07/node-securewebtoken/badge.svg)](https://snyk.io/test/github/MintuSingh07/node-securewebtoken)
 
 ```bash
 npm install secure-web-token
