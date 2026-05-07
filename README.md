@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/MintuSingh07/node-securewebtoken/main/downloads-badge.svg" alt="50K+ Downloads" width="600" />
+  <img src="https://res.cloudinary.com/dch9wfmjd/image/upload/v1778126974/downloads-badge_vyp6px.svg" alt="50K+ Downloads" width="600" />
 </p>
 
 <h1 align="center">secure-web-token (SWT)</h1>
