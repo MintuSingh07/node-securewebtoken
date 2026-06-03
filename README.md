@@ -37,13 +37,14 @@
 
 <p align="center">
   <a href="#why-swt">Why SWT?</a> •
-  <a href="#redis-session-store-distributed-scaling">Redis Store Integration</a> •
   <a href="#installation">Installation</a> •
-  <a href="#quick-start">Quick Start</a> •
-  <a href="#full-expressjs--redis-example">Full Redis & Express Example</a> •
+  <a href="#quick-start-noob-friendly">Quick Start</a> •
+  <a href="#advanced-enterprise-features-pro-friendly">Enterprise Upgrades</a> •
+  <a href="#redis-session-store-distributed-scaling">Redis Store Scaling</a> •
   <a href="#api-reference">API Reference</a> •
   <a href="#swt-vs-jwt--deep-comparison">SWT vs JWT</a> •
-  <a href="#faq">FAQ</a>
+  <a href="#faq">FAQ</a> •
+  <a href="#roadmap">Roadmap</a>
 </p>
 
 ---
@@ -54,13 +55,177 @@
 
 | Problem | JWT | SWT (Redis-backed) |
 |---|---|---|
-| Payload encryption | ❌ Base64 only — readable by anyone | ✅ AES-256-GCM encrypted |
-| Device binding | ❌ Token works on any device, anywhere | ✅ Bound to original device fingerprint in Redis |
-| True logout | ❌ Tokens stay valid after logout | ✅ Instant server-side revocation in Redis |
-| Token theft impact | ❌ Stolen token = full account access | ✅ Stolen token fails fingerprint check, instantly revocable |
-| Scalability | ✅ Stateless | ✅ Distributed session state via low-latency Redis |
+| **Payload encryption** | ❌ Base64 only — readable by anyone | ✅ AES-256-GCM encrypted |
+| **Device binding** | ❌ Token works on any device, anywhere | ✅ Bound to original device fingerprint in Redis |
+| **True logout** | ❌ Tokens stay valid after logout | ✅ Instant server-side revocation in Redis |
+| **Token theft impact** | ❌ Stolen token = full account access | ✅ Stolen token fails fingerprint check, instantly revocable |
+| **Scalability** | ✅ Stateless | ✅ Distributed session state via low-latency Redis |
 
 > **If you're storing user roles, permissions, or any sensitive identifiers in a JWT — they're readable by anyone who gets that token.** SWT fixes this at the architecture level using AES-256-GCM encryption and distributed session states in Redis.
+
+---
+
+## Installation
+
+```bash
+npm install secure-web-token
+```
+
+---
+
+## Quick Start (Noob-Friendly)
+
+If you are new to backend development, this is the easiest way to add secure, stateful login to your app in **under 3 minutes** using server memory.
+
+### Simple Express App (In-Memory Sessions)
+```js
+const express = require("express");
+const cookieParser = require("cookie-parser");
+const { sign, verify, getStore, swtMiddleware } = require("secure-web-token");
+
+const app = express();
+app.use(express.json());
+app.use(cookieParser());
+
+const SECRET = "a-very-secure-256-bit-key-for-token-signing";
+const memoryStore = getStore("memory"); // Stateful store in server memory
+
+// 1. Login Endpoint
+app.post("/login", async (req, res) => {
+  const { userId, username } = req.body;
+  
+  // Sign token and create active session in Memory
+  const { token, sessionId } = await sign(
+    { userId, username },
+    SECRET,
+    {
+      fingerprint: true, // Enable device binding check
+      store: memoryStore
+    }
+  );
+
+  // Send sessionId in secure cookie and token in JSON
+  res.cookie("swt_session", sessionId, { httpOnly: true, secure: false });
+  res.json({ token });
+});
+
+// 2. Protected Route (Access Controlled via Middleware)
+app.get(
+  "/profile",
+  swtMiddleware({
+    secret: SECRET,
+    store: memoryStore,
+    cookieName: "swt_session",
+    requireSession: true,
+    fingerprint: true
+  }),
+  (req, res) => {
+    // req.swt contains the decrypted payload
+    res.json({ message: "Welcome!", user: req.swt });
+  }
+);
+
+// 3. Logout Endpoint (Revoke Session instantly)
+app.post("/logout", async (req, res) => {
+  const sessionId = req.cookies.swt_session;
+  if (sessionId) {
+    await memoryStore.revokeSession(sessionId); // Erases session from memory
+  }
+  res.clearCookie("swt_session");
+  res.json({ message: "Logged out!" });
+});
+
+app.listen(4000, () => console.log("Auth server running on port 4000"));
+```
+
+---
+
+## Advanced Enterprise Features (Pro-Friendly)
+
+For senior engineers building high-traffic, microservice-based, or high-security architectures, SWT provides production-hardened features.
+
+### A. Asymmetric Key Signing (RSA/ECDSA)
+In a microservices architecture, you do not want all services to share the same secret key. SWT supports signing with a **Private Key** (Auth Service only) and verification using a **Public Key** (microservices can verify without knowing the sign key).
+
+```ts
+import { sign, verify } from "secure-web-token";
+
+// 1. Auth Service: Sign with Private Key
+const { token } = await sign(
+  { userId: "user_101", role: "admin" },
+  PRIVATE_KEY_PEM, // PEM Private Key
+  {
+    expiresIn: 900,
+    encryptionSecret: "aes-payload-encryption-secret" // Used for AES payload encryption
+  }
+);
+
+// 2. Downstream Microservice: Verify with Public Key
+const decrypted = await verify(token, PUBLIC_KEY_PEM, {
+  encryptionSecret: "aes-payload-encryption-secret"
+});
+```
+
+---
+
+### B. Cryptographic Proof-of-Possession (DPoP Binding)
+To completely prevent token copying (e.g. copying cookies/tokens to an incognito window or another laptop), you can bind the session to an **isolated browser key pair** using the **Web Crypto API**:
+
+#### Step 1: Generate & Sign on the Frontend (Browser)
+```javascript
+// 1. Generate non-exportable Web Crypto key pair in browser
+const keyPair = await window.crypto.subtle.generateKey(
+  { name: "ECDSA", namedCurve: "P-256" },
+  false, // extractable: false (CRITICAL: Hacker cannot copy this private key!)
+  ["sign", "verify"]
+);
+
+// Save Public Key to send during login
+const jwkPublicKey = await window.crypto.subtle.exportKey("jwk", keyPair.publicKey);
+
+// 2. Sign a dynamic payload before making a request
+const clientPayload = JSON.stringify({
+  url: "/api/auth/profile",
+  method: "GET",
+  timestamp: Math.floor(Date.now() / 1000)
+});
+const encoder = new TextEncoder();
+const signatureBuffer = await window.crypto.subtle.sign(
+  { name: "ECDSA", hash: { name: "SHA-256" } },
+  keyPair.privateKey,
+  encoder.encode(clientPayload)
+);
+const clientSignature = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer)))
+  .replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, ""); // Base64URL
+```
+
+#### Step 2: Register on Login & Verify on the Backend (Node)
+```ts
+// 1. On Login: Register the client public JWK key
+const { token, sessionId } = await sign({ userId }, SECRET, {
+  fingerprint: true,
+  store: redisStore,
+  clientPublicKey: JSON.stringify(jwkPublicKey) // Saved in Redis session
+});
+
+// 2. On Request: Middleware verifies the signature header
+// Header: x-client-signature (base64url)
+// Header: x-client-payload (plaintext payload)
+app.get("/profile", swtMiddleware({
+  secret: SECRET,
+  store: redisStore,
+  requireSession: true
+}), (req, res) => {
+  res.json(req.swt);
+});
+```
+
+---
+
+### C. Pre-Decryption Expiration Validation (DDoS Shield)
+Standard JWT decryption is CPU-intensive. Under a DDoS attack, decrypting thousands of expired tokens can freeze your server. 
+
+SWT automatically exposes the expiration timestamp (`exp`) in the unencrypted token header. During verification, it checks `exp` **before** performing AES-256 decryption, blocking expired tokens instantly with minimal CPU overhead.
 
 ---
 
@@ -71,21 +236,21 @@ The **`RedisStore`** adapter is the core engine for production scaling in Secure
 ```
                   ┌──────────────────────────────┐
                   │      Load Balancer / Gateway │
-                  └──────────────┬───────────────┘
-                                 │
-         ┌───────────────────────┼───────────────────────┐
-         ▼                       ▼                       ▼
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│ Server Node A   │     │ Server Node B   │     │ Server Node C   │
-└────────┬────────┘     └────────┬────────┘     └────────┬────────┘
-         │                       │                       │
-         └───────────────────────┼───────────────────────┘
-                                 ▼
-                    ┌─────────────────────────┐
-                    │  Shared Redis Database  │
-                    │   (Key-value store)     │
-                    │  [swt:session:cookieId] │
-                    └─────────────────────────┘
+                  └───────────────┬──────────────┘
+                                  │
+         ┌────────────────────────┼───────────────────────┐
+         ▼                        ▼                       ▼
+┌─────────────────┐      ┌─────────────────┐     ┌─────────────────┐
+│ Server Node A   │      │ Server Node B   │     │ Server Node C   │
+└────────┬────────┘      └────────┬────────┘     └────────┬────────┘
+         │                        │                       │
+         └────────────────────────┼───────────────────────┘
+                                  ▼
+                     ┌─────────────────────────┐
+                     │  Shared Redis Database  │
+                     │   (Key-value store)     │
+                     │  [swt:session:cookieId] │
+                     └─────────────────────────┘
 ```
 
 ### 1. Connection Types & Setup
@@ -106,20 +271,12 @@ const store = new RedisStore(client, {
 });
 ```
 
-#### Using `ioredis`
-```ts
-import { RedisStore } from "secure-web-token";
-import Redis from "ioredis";
+### 2. Circuit-Breaker Failover (Anti-Crash Resiliency)
+In real production environments, databases go down. If Redis disconnects, you don't want your authentication service to crash. 
 
-const client = new Redis("redis://localhost:6379");
+The `RedisStore` includes a built-in **circuit breaker**: if it encounters a connection error, it prints a console warning and **automatically falls back to In-Memory session tracking** until Redis recovers, keeping your app online.
 
-const store = new RedisStore(client, {
-  prefix: "auth:session:",
-  ttl: 86400
-});
-```
-
-### 2. Under the Hood: Redis Key Schema
+### 3. Under the Hood: Redis Key Schema
 
 When a user logs in and a device-bound session is registered, SWT writes a JSON stringified session to Redis under the calculated session ID:
 
@@ -139,206 +296,6 @@ When a user logs in and a device-bound session is registered, SWT writes a JSON 
 
 ---
 
-## Installation
-
-```bash
-npm install secure-web-token
-```
-
----
-
-## Quick Start
-
-### 1. Generate a Redis-Bound Token
-
-```ts
-import { sign, RedisStore } from "secure-web-token";
-import { createClient } from "redis";
-
-const redisClient = createClient();
-await redisClient.connect();
-
-const store = new RedisStore(redisClient);
-const SECRET = "your-256-bit-secret";
-
-const { token, sessionId, refreshToken } = await sign(
-  { userId: "user_101", role: "admin" },
-  SECRET,
-  {
-    fingerprint: true,                   // Enable device binding and session state
-    clientFingerprint: "Mozilla/5.0...",  // (Optional) Pass client browser fingerprint
-    store: store,                        // Persist state in Redis
-    expiresIn: 900,                      // 15 minutes access token expiry
-    generateRefreshToken: true,          // Generate long-lived refresh token
-    refreshExpiresIn: 604800             // 7 days refresh token expiry
-  }
-);
-
-// → Send `token` and `refreshToken` to client
-// → Store `sessionId` in an HttpOnly cookie
-```
-
-### 2. Verify a Token using Redis
-
-```ts
-import { verify, RedisStore } from "secure-web-token";
-
-const store = new RedisStore(redisClient);
-const session = await store.getSession(sessionId); // reads from Redis
-
-const payload = await verify(token, SECRET, {
-  sessionId,
-  fingerprint: true,                   // Enable session/device verification
-  clientFingerprint: "Mozilla/5.0...",  // (Optional) Current browser fingerprint
-  store: store,                        // Read verification mapping from Redis
-});
-
-// payload.data → { userId: "user_101", role: "admin" }
-```
-
-### 3. Rotate Tokens via Silent Refresh
-
-```ts
-import { refresh, RedisStore } from "secure-web-token";
-
-const store = new RedisStore(redisClient);
-
-const rotated = await refresh(oldRefreshToken, SECRET, {
-  sessionId,
-  fingerprint: true,
-  clientFingerprint: requestFingerprint, // Pass current client fingerprint
-  store: store,                          // Validate and rotate session records inside Redis
-  expiresIn: 900,
-  refreshExpiresIn: 604800
-});
-
-// rotated.token → New access token
-// rotated.refreshToken → New rotated refresh token
-```
-
-### 4. Logout (Instant Session Revocation)
-
-```ts
-// Deletes key from Redis — token is dead immediately across all server nodes
-await store.revokeSession(sessionId);
-res.clearCookie("swt_session");
-```
-
----
-
-## Full Express.js + Redis Example
-
-Here is a full production-ready implementation utilizing Express, a live Redis client, cookies, token rotation, and middleware:
-
-```ts
-import express from "express";
-import cookieParser from "cookie-parser";
-import cors from "cors";
-import { createClient } from "redis";
-import { sign, verify, RedisStore, refresh, swtMiddleware } from "secure-web-token";
-
-const app = express();
-app.use(cors({ origin: true, credentials: true }));
-app.use(cookieParser());
-app.use(express.json());
-
-const SECRET = process.env.SWT_SECRET || "a-very-secure-256-bit-key-for-production";
-
-// Initialize Redis Client & Store
-const redisClient = createClient({ url: process.env.REDIS_URL });
-await redisClient.connect();
-
-const redisStore = new RedisStore(redisClient, {
-  prefix: "app:session:",
-  ttl: 86400
-});
-
-// ──────────────────────────────────────────
-// POST /login — Register session in Redis
-// ──────────────────────────────────────────
-app.post("/login", async (req, res) => {
-  // Perform credential authentication checks here
-  const user = { userId: "user_101", name: "Alice", role: "admin" };
-
-  const { token, sessionId, refreshToken } = await sign(user, SECRET, {
-    fingerprint: true,
-    clientFingerprint: req.headers["user-agent"] || "", // Bind client user-agent
-    store: redisStore,
-    expiresIn: 900,
-    generateRefreshToken: true,
-    refreshExpiresIn: 604800
-  });
-
-  // sessionId → XSS-Proof HttpOnly cookie
-  res.cookie("swt_session", sessionId, {
-    httpOnly: true,
-    secure: true,
-    sameSite: "strict",
-  });
-
-  res.json({ token, refreshToken });
-});
-
-// ──────────────────────────────────────────
-// GET /profile — Authenticate requests via Redis
-// ──────────────────────────────────────────
-app.get(
-  "/profile",
-  swtMiddleware({
-    secret: SECRET,
-    store: redisStore,
-    requireSession: true, // performs Redis verification check
-    fingerprint: true,    // Enable fingerprint checks
-    getFingerprint: (req) => req.headers["user-agent"] || "unknown"
-  }),
-  (req, res) => {
-    // Authenticated data is available in req.swt
-    res.json({ user: req.swt });
-  }
-);
-
-// ──────────────────────────────────────────
-// POST /refresh — Token rotation endpoint
-// ──────────────────────────────────────────
-app.post("/refresh", async (req, res) => {
-  try {
-    const { refreshToken } = req.body;
-    const sessionId = req.cookies.swt_session;
-    const clientFingerprint = req.headers["user-agent"] || "unknown";
-
-    // Rotates the tokens, verifying existing states in Redis
-    const rotated = await refresh(refreshToken, SECRET, {
-      sessionId,
-      fingerprint: true,
-      clientFingerprint,
-      store: redisStore,
-      expiresIn: 900,
-      refreshExpiresIn: 604800
-    });
-
-    res.json(rotated);
-  } catch (err) {
-    res.status(401).json({ error: "Invalid refresh session" });
-  }
-});
-
-// ──────────────────────────────────────────
-// POST /logout — Revoke key from Redis
-// ──────────────────────────────────────────
-app.post("/logout", async (req, res) => {
-  const sessionId = req.cookies.swt_session;
-  if (sessionId) {
-    await redisStore.revokeSession(sessionId); // Session deleted instantly in Redis
-  }
-  res.clearCookie("swt_session");
-  res.json({ success: true });
-});
-
-app.listen(4000);
-```
-
----
-
 ## API Reference
 
 ### `RedisStore` Class
@@ -353,33 +310,34 @@ Central class for connecting SWT session validations to a distributed Redis back
   * `async getSession(sessionId)`: Reads and parses session data from Redis.
   * `async revokeSession(sessionId)`: Deletes the session key from Redis.
 
-### `async sign(data, secret, options)`
+### `async sign(data, secretOrPrivateKey, options)`
 Generates an encrypted token and registers a session (writes to Redis if `RedisStore` is passed).
 * **Arguments:**
   * `data`: `Record<string, any>` — Payload object to encrypt. Must include `userId`.
-  * `secret`: `string` — Key derivation and signature secret.
+  * `secretOrPrivateKey`: `string` — Symmetric secret or PEM Private Key.
   * `options`: `SignOptions`
     * `fingerprint`: `boolean` — Enables device binding and session state (default: `false`).
-    * `clientFingerprint`: `string` — (Optional) Custom browser/client identity string (User-Agent, IP, etc.).
+    * `clientFingerprint`: `string` — Custom browser/client identity string (User-Agent, IP, etc.).
     * `store`: `StoreType | Store` — Pass your instanced `RedisStore`.
     * `expiresIn`: `number` — Access token lifespan in seconds (default: `900`).
     * `generateRefreshToken`: `boolean` — Generates a refresh token.
     * `refreshExpiresIn`: `number` — Refresh token lifespan in seconds.
-    * `auditLogger`: `AuditLogger` — Hooks into security events.
-* **Returns:** `Promise<{ token: string; sessionId?: string; refreshToken?: string }>`
+    * `clientPublicKey`: `string` — Optional browser-generated public key (JWK format) for DPoP binding.
+    * `encryptionSecret`: `string` — Symmetric GCM encryption secret (when using asymmetric keys).
 
-### `async verify(token, secret, options)`
+### `async verify(token, secretOrPublicKey, options)`
 Verifies token signature, decrypts payload, and validates state boundaries against Redis.
 * **Arguments:**
   * `token`: `string` — The SWT string.
-  * `secret`: `string` — Decryption secret.
+  * `secretOrPublicKey`: `string` — Decryption secret or PEM Public Key.
   * `options`: `VerifyOptions`
     * `sessionId`: `string` — Session ID cookie.
     * `fingerprint`: `boolean` — Enables session/device verification.
-    * `clientFingerprint`: `string` — (Optional) Current browser/client identity string to verify.
+    * `clientFingerprint`: `string` — Current browser/client identity string to verify.
     * `store`: `StoreType | Store` — Pass your instanced `RedisStore`.
-    * `auditLogger`: `AuditLogger` — Audits success/failure events.
-* **Returns:** `Promise<Record<string, any>>`
+    * `clientSignature`: `string` — Incoming browser signature (DPoP).
+    * `clientPayload`: `string` — Incoming browser plaintext payload (DPoP).
+    * `encryptionSecret`: `string` — Symmetric GCM encryption secret (when using asymmetric keys).
 
 ### `async refresh(refreshToken, secret, options)`
 Validates refresh token claims against Redis state and emits a rotated access/refresh pair.
@@ -389,21 +347,20 @@ Validates refresh token claims against Redis state and emits a rotated access/re
   * `options`: `RefreshOptions`
     * `sessionId`: `string` — Session ID.
     * `fingerprint`: `boolean` — Enables session/device verification.
-    * `clientFingerprint`: `string` — (Optional) Current browser/client identity string.
+    * `clientFingerprint`: `string` — Current browser/client identity string.
     * `store`: `StoreType | Store` — Pass your instanced `RedisStore`.
-* **Returns:** `Promise<{ token: string; sessionId?: string; refreshToken?: string }>`
 
 ### `swtMiddleware(options)`
 Express middleware validation helper.
 * **Arguments:**
   * `options`: `MiddlewareOptions`
-    * `secret`: `string` — Secret key.
+    * `secret`: `string` — Secret key or PEM Public Key.
     * `store`: `StoreType | Store` — Pass your instanced `RedisStore`.
     * `cookieName`: `string` — Cookie name (default: `"swt_session"`).
     * `requireSession`: `boolean` — Performs Redis check.
     * `fingerprint`: `boolean` — Enables fingerprint/device verification (default: `true`).
     * `getFingerprint`: `(req) => string` — Custom fingerprint callback.
-* **Returns:** Express middleware handler.
+    * `encryptionSecret`: `string` — Symmetric GCM encryption secret (when using asymmetric keys).
 
 ---
 
@@ -492,37 +449,25 @@ Client                              Server                           Redis
 
 Migration is straightforward. Replace `jwt.sign()` with `sign()` from SWT and `jwt.verify()` with `verify()`. The main additions are server-side session storage and device fingerprinting — both handled automatically when you pass your instanced `RedisStore`.
 
----
-
 **Q: What encryption algorithm does SWT use?**
 
 AES-256-GCM — the gold standard for symmetric authenticated encryption, recommended by NIST, and the same cipher used in TLS 1.3. It provides both confidentiality and integrity (tamper detection) in a single pass.
-
----
 
 **Q: Does SWT support Redis for distributed systems?**
 
 Yes. The Redis store adapter is available out-of-the-box. You can instantiate `RedisStore` directly passing any standard Redis client.
 
----
-
 **Q: SWT is stateful. Isn't stateless better?**
 
 Stateless JWT trades security for scalability. That tradeoff made sense for internal microservices, but not for user-facing auth. SWT uses a minimal server-side footprint — one small session record per active user — which is manageable at any production scale. The security gains far outweigh the overhead.
-
----
 
 **Q: When should I still use JWT?**
 
 JWT is fine for short-lived, low-sensitivity tokens between internal services where interception risk is low and logout/device binding don't matter. For any user-facing session, SWT is the better choice.
 
----
-
 **Q: What Node.js version is required?**
 
 Node.js `>=25.5.0`. SWT uses the native `crypto` module for AES-256-GCM — no external cryptography dependencies.
-
----
 
 **Q: Does SWT prevent XSS attacks entirely?**
 
@@ -541,6 +486,9 @@ SWT significantly reduces the impact of XSS. Because the session ID lives in an 
 - [x] Strict TypeScript types
 - [x] Express.js middleware helper (`swtMiddleware()`)
 - [x] Audit log support
+- [x] Asymmetric signing (RSA/ECDSA) support
+- [x] Cryptographic browser binding (DPoP)
+- [x] Redis Circuit Breaker Failover
 - [ ] React hooks (`useSWT`)
 
 ---

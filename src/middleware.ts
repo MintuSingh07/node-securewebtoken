@@ -23,7 +23,7 @@ export interface SwtRequest {
  */
 export interface MiddlewareOptions {
   /**
-   * The secret key used for verifying the token signature.
+   * The secret key (or PEM Public Key) used for verifying the token signature.
    */
   secret: string;
   /**
@@ -45,18 +45,22 @@ export interface MiddlewareOptions {
   fingerprint?: boolean;
   /**
    * Custom function to extract device fingerprint from request headers or IP.
-   * If not provided, defaults to the request's User-Agent string.
+   * If not provided, defaults to the request's User-Agent string (logs a security warning).
    */
   getFingerprint?: (req: any) => string;
   /**
    * Optional logger callback for security events.
    */
   auditLogger?: AuditLogger;
+  /**
+   * Separate payload decryption key. Mandatory if using asymmetric keys and verifier needs to decrypt.
+   */
+  encryptionSecret?: string;
 }
 
 /**
  * Express middleware helper to authenticate and verify Secure Web Tokens.
- * Automatically extracts the token and validates device fingerprinting.
+ * Automatically extracts the token and validates device fingerprinting & DPoP.
  *
  * @param options - Config options for the middleware.
  * @returns An Express-compatible middleware handler.
@@ -83,10 +87,18 @@ export function swtMiddleware(options: MiddlewareOptions) {
         if (options.getFingerprint) {
           fingerprint = options.getFingerprint(req);
         } else {
-          // Default fingerprint is the User-Agent header (or fallback to empty string)
+          // Log developer security warning for default User-Agent fingerprinting fallback
+          console.warn(
+            "[secure-web-token] SECURITY WARNING: No custom getFingerprint function provided. " +
+            "Falling back to weak HTTP User-Agent fingerprinting which is vulnerable to device spoofing."
+          );
           fingerprint = req.headers["user-agent"] || "";
         }
       }
+
+      // Extract client DPoP headers if present
+      const clientSignature = req.headers["x-client-signature"];
+      const clientPayload = req.headers["x-client-payload"];
 
       // Verify the token using our core async verify function
       const payload = await verify(token, options.secret, {
@@ -95,6 +107,9 @@ export function swtMiddleware(options: MiddlewareOptions) {
         clientFingerprint: fingerprint,
         store: requireSession ? (storeInstance || undefined) : undefined,
         auditLogger: options.auditLogger,
+        encryptionSecret: options.encryptionSecret,
+        clientSignature: typeof clientSignature === "string" ? clientSignature : undefined,
+        clientPayload: typeof clientPayload === "string" ? clientPayload : undefined,
       });
 
       // Attach decrypted payload data and session context to request object

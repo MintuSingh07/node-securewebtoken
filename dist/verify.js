@@ -46,39 +46,65 @@ const audit_1 = require("./audit");
  * Verifies and decrypts a Secure Web Token (SWT).
  *
  * @param token - The SWT string to verify.
- * @param secret - The secret key used for decryption and signature verification.
+ * @param secretOrPublicKey - The secret key (or PEM Public Key) used for decryption and signature verification.
  * @param options - Verification options.
  *
  * @returns The decrypted payload data.
- * @throws {Error} If the token is invalid, expired, or session verification fails.
+ * @throws {Error} If the token is invalid, expired, or session/DPoP verification fails.
  */
-async function verify(token, secret, options = {}) {
+async function verify(token, secretOrPublicKey, options = {}) {
     try {
         if (!token || typeof token !== "string")
             throw new Error("Token must be string");
         const parts = token.split(".");
         if (parts.length !== 3)
             throw new Error("Invalid token format");
-        const [header, encryptedPayload, signature] = parts;
-        const dataToVerify = `${header}.${encryptedPayload}`;
-        const expectedSignature = crypto
-            .createHmac("sha256", secret)
-            .update(dataToVerify)
-            .digest("base64url");
-        if (!(0, utils_1.timingSafeEqual)(Buffer.from(signature), Buffer.from(expectedSignature)))
-            throw new Error("Invalid signature");
-        const payload = (0, decrypt_1.default)(encryptedPayload, secret);
+        const [headerB64, encryptedPayload, signature] = parts;
+        // Fast pre-decryption expiration validation
+        const headerStr = (0, utils_1.base64urlDecode)(headerB64).toString("utf8");
+        let headerObj;
+        try {
+            headerObj = JSON.parse(headerStr);
+        }
+        catch {
+            throw new Error("Invalid token header");
+        }
         const now = Math.floor(Date.now() / 1000);
+        if (headerObj.exp && headerObj.exp < now) {
+            throw new Error("Token expired");
+        }
+        const dataToVerify = `${headerB64}.${encryptedPayload}`;
+        const isPem = secretOrPublicKey.includes("-----BEGIN");
+        if (isPem) {
+            // Asymmetric signature verification (RSA-SHA256)
+            const verifier = crypto.createVerify("SHA256");
+            verifier.update(dataToVerify);
+            const isValid = verifier.verify(secretOrPublicKey, signature, "base64url");
+            if (!isValid)
+                throw new Error("Invalid signature");
+        }
+        else {
+            // Symmetric signature verification (HMAC-SHA256)
+            const expectedSignature = crypto
+                .createHmac("sha256", secretOrPublicKey)
+                .update(dataToVerify)
+                .digest("base64url");
+            if (!(0, utils_1.timingSafeEqual)(Buffer.from(signature), Buffer.from(expectedSignature)))
+                throw new Error("Invalid signature");
+        }
+        const encSecret = options.encryptionSecret || secretOrPublicKey;
+        const payload = (0, decrypt_1.default)(encryptedPayload, encSecret);
+        // Double check payload expiration (fallback security)
         if (payload.exp < now)
             throw new Error("Token expired");
         if (!payload.data || typeof payload.data !== "object")
             throw new Error("Invalid payload");
+        const store = typeof options.store === "string" ? (0, store_1.getStore)(options.store) : options.store;
         // Server-side session verification
         if (payload.fp || options.sessionId || options.fingerprint) {
             if (!options.sessionId) {
                 throw new Error("Session ID is required for device-bound tokens");
             }
-            const store = typeof options.store === "string" ? (0, store_1.getStore)(options.store) : options.store;
             if (!store)
                 throw new Error("No store available");
             const session = await store.getSession(options.sessionId);
@@ -89,6 +115,40 @@ async function verify(token, secret, options = {}) {
             const expectedFingerprint = options.clientFingerprint ?? payload.fp;
             if (session.fingerprint !== expectedFingerprint)
                 throw new Error("Device mismatch");
+            // DPoP Verification if a public key was bound to this session
+            if (session.clientPublicKey) {
+                if (!options.clientSignature || !options.clientPayload) {
+                    throw new Error("Client signature required for secure binding");
+                }
+                // Validate client signature payload format and timestamp (anti-replay)
+                let parsedPayload;
+                try {
+                    parsedPayload = JSON.parse(options.clientPayload);
+                }
+                catch {
+                    throw new Error("Invalid client payload format");
+                }
+                if (!parsedPayload.timestamp || Math.abs(now - parsedPayload.timestamp) > 300) {
+                    throw new Error("Client payload timestamp expired or invalid");
+                }
+                // Verify the browser signature using the registered client public key (JWK)
+                try {
+                    const clientJwk = JSON.parse(session.clientPublicKey);
+                    const clientKeyObject = crypto.createPublicKey({
+                        key: clientJwk,
+                        format: 'jwk'
+                    });
+                    const clientVerifier = crypto.createVerify("SHA256");
+                    clientVerifier.update(options.clientPayload);
+                    const isClientSigValid = clientVerifier.verify(clientKeyObject, options.clientSignature, "base64url");
+                    if (!isClientSigValid) {
+                        throw new Error("Client signature verification failed");
+                    }
+                }
+                catch (jwkErr) {
+                    throw new Error(`DPoP verification failed: ${jwkErr.message}`);
+                }
+            }
         }
         // Trigger audit log success event
         await (0, audit_1.logEvent)(options.auditLogger, {

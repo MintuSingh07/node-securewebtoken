@@ -1,4 +1,5 @@
 import { Store, Session } from "./types";
+import { MemoryStore } from "./memoryStore";
 
 export interface RedisStoreOptions {
   /**
@@ -12,12 +13,13 @@ export interface RedisStoreOptions {
 }
 
 /**
- * Pluggable Redis store adapter.
+ * Pluggable Resilient Redis store adapter with In-Memory failover.
  * Works with ioredis, redis (npm library), or any client that supports standard get/set/del.
  */
 export class RedisStore implements Store {
   private client: any;
   private options: RedisStoreOptions;
+  private fallbackStore: MemoryStore;
 
   constructor(client: any, options: RedisStoreOptions = {}) {
     if (!client) {
@@ -25,6 +27,7 @@ export class RedisStore implements Store {
     }
     this.client = client;
     this.options = options;
+    this.fallbackStore = new MemoryStore();
   }
 
   private getKey(sessionId: string): string {
@@ -37,47 +40,74 @@ export class RedisStore implements Store {
     const ttl = this.options.ttl ?? 86400; // default 24h
     const dataStr = JSON.stringify(session);
 
-    // Support multiple library signatures:
-    // node-redis v4 expects client.set(key, value, { EX: ttl })
-    // ioredis / older redis expects client.set(key, value, "EX", ttl)
-    if (typeof this.client.set === "function") {
-      try {
-        const res = this.client.set(key, dataStr, { EX: ttl });
-        if (res instanceof Promise) await res;
-      } catch (err) {
-        // Fallback to position arguments
-        const res = this.client.set(key, dataStr, "EX", ttl);
-        if (res instanceof Promise) await res;
+    try {
+      if (typeof this.client.set === "function") {
+        try {
+          const res = this.client.set(key, dataStr, { EX: ttl });
+          if (res instanceof Promise) await res;
+        } catch (err) {
+          // Fallback to position arguments (ioredis style)
+          const res = this.client.set(key, dataStr, "EX", ttl);
+          if (res instanceof Promise) await res;
+        }
+      } else {
+        throw new Error("Redis client does not support .set() method");
       }
-    } else {
-      throw new Error("Redis client does not support .set() method");
+    } catch (redisErr: any) {
+      console.warn(
+        `[secure-web-token] REDIS ERROR: Failed to register session in Redis. ` +
+        `Falling back to In-Memory store. Error: ${redisErr.message}`
+      );
+      this.fallbackStore.registerSession(session);
     }
   }
 
   async getSession(sessionId: string): Promise<Session | null> {
     const key = this.getKey(sessionId);
-    if (typeof this.client.get !== "function") {
-      throw new Error("Redis client does not support .get() method");
-    }
-
-    const data = this.client.get(key);
-    const resolvedData = data instanceof Promise ? await data : data;
-    if (!resolvedData) return null;
-
     try {
-      return JSON.parse(resolvedData) as Session;
-    } catch {
-      return null;
+      if (typeof this.client.get !== "function") {
+        throw new Error("Redis client does not support .get() method");
+      }
+
+      const data = this.client.get(key);
+      const resolvedData = data instanceof Promise ? await data : data;
+      
+      if (!resolvedData) {
+        // Fallback check (in case session was saved in fallback store due to pre-existing redis outage)
+        return this.fallbackStore.getSession(sessionId);
+      }
+
+      try {
+        return JSON.parse(resolvedData) as Session;
+      } catch {
+        return null;
+      }
+    } catch (redisErr: any) {
+      console.warn(
+        `[secure-web-token] REDIS ERROR: Failed to get session from Redis. ` +
+        `Falling back to In-Memory store. Error: ${redisErr.message}`
+      );
+      return this.fallbackStore.getSession(sessionId);
     }
   }
 
   async revokeSession(sessionId: string): Promise<void> {
     const key = this.getKey(sessionId);
-    if (typeof this.client.del !== "function") {
-      throw new Error("Redis client does not support .del() method");
-    }
+    try {
+      if (typeof this.client.del !== "function") {
+        throw new Error("Redis client does not support .del() method");
+      }
 
-    const res = this.client.del(key);
-    if (res instanceof Promise) await res;
+      const res = this.client.del(key);
+      if (res instanceof Promise) await res;
+    } catch (redisErr: any) {
+      console.warn(
+        `[secure-web-token] REDIS ERROR: Failed to revoke session in Redis. ` +
+        `Falling back to In-Memory store. Error: ${redisErr.message}`
+      );
+    } finally {
+      // Always guarantee revocation in fallback store as well
+      this.fallbackStore.revokeSession(sessionId);
+    }
   }
 }

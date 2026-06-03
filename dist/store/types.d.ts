@@ -6,6 +6,7 @@ export interface Session {
     userId: string | number;
     deviceId: string;
     fingerprint: string;
+    clientPublicKey?: string;
 }
 /**
  * Interface for session storage backends.

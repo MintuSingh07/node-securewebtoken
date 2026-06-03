@@ -45,33 +45,45 @@ export interface SignOptions {
    * Pre-existing session ID to bind.
    */
   sessionId?: string;
+  /**
+   * Separate payload encryption key. Mandatory if using asymmetric keys and verifier needs to decrypt.
+   */
+  encryptionSecret?: string;
+  /**
+   * Optional browser-generated public key (JWK format) for DPoP binding.
+   */
+  clientPublicKey?: string;
 }
 
 /**
  * Signs a payload to create a Secure Web Token (SWT).
  * 
  * @param data - The object to be encrypted in the token. Must include `userId` if using fingerprint/session mode.
- * @param secret - The secret key used for encryption and HMAC signing.
+ * @param secretOrPrivateKey - The secret key (or PEM Private Key) used for encryption and signing.
  * @param options - Configuration options for the token.
  * 
  * @returns An object containing the generated `token`, optional `sessionId`, and optional `refreshToken`.
  */
 export default async function sign(
   data: Record<string, any>,
-  secret: string,
+  secretOrPrivateKey: string,
   options: SignOptions = {}
 ): Promise<{ token: string; sessionId?: string; refreshToken?: string }> {
 
-  if (!secret || typeof secret !== "string") throw new Error("Secret required");
+  if (!secretOrPrivateKey || typeof secretOrPrivateKey !== "string") throw new Error("Secret or Private Key required");
   if (!data || typeof data !== "object") throw new Error("Data must be object");
   if (!data.userId) throw new Error("data.userId is required for session mode");
 
+  const isPem = secretOrPrivateKey.includes("-----BEGIN");
+  const encSecret = options.encryptionSecret || secretOrPrivateKey;
+
   const now = Math.floor(Date.now() / 1000);
+  const exp = now + (options.expiresIn ?? 900);
 
   const payload: Record<string, any> = {
     data,
     iat: now,
-    exp: now + (options.expiresIn ?? 900),
+    exp,
   };
 
   let sessionId: string | undefined;
@@ -91,34 +103,43 @@ export default async function sign(
         userId: data.userId,
         deviceId,
         fingerprint: options.clientFingerprint ?? deviceId,
+        clientPublicKey: options.clientPublicKey, // Save DPoP public key
       });
     }
   }
 
-
   const header = {
-    alg: "AES-256-GCM+HMAC",
+    alg: isPem ? "RS256" : "AES-256-GCM+HMAC",
     typ: "SWT",
+    exp, // Exposed in plain text header for fast expiration verification
   };
 
   const encodedHeader = base64urlEncode(JSON.stringify(header));
-  const encryptedPayload = encrypt(payload, secret);
+  const encryptedPayload = encrypt(payload, encSecret);
   const dataToSign = `${encodedHeader}.${encryptedPayload}`;
 
-  const signature = crypto
-    .createHmac("sha256", secret)
-    .update(dataToSign)
-    .digest("base64url");
+  let signature: string;
+  if (isPem) {
+    const signer = crypto.createSign("SHA256");
+    signer.update(dataToSign);
+    signature = signer.sign(secretOrPrivateKey, "base64url");
+  } else {
+    signature = crypto
+      .createHmac("sha256", secretOrPrivateKey)
+      .update(dataToSign)
+      .digest("base64url");
+  }
 
   const token = `${dataToSign}.${signature}`;
 
   let refreshToken: string | undefined;
 
   if (options.generateRefreshToken === true) {
+    const refreshExp = now + (options.refreshExpiresIn ?? 604800);
     const refreshPayload: Record<string, any> = {
       data: { userId: data.userId },
       iat: now,
-      exp: now + (options.refreshExpiresIn ?? 604800), // Default to 7 days
+      exp: refreshExp,
       isRefresh: true,
     };
 
@@ -127,18 +148,26 @@ export default async function sign(
     }
 
     const refreshHeader = {
-      alg: "AES-256-GCM+HMAC",
+      alg: isPem ? "RS256" : "AES-256-GCM+HMAC",
       typ: "SWT-Refresh",
+      exp: refreshExp,
     };
 
     const encodedRefreshHeader = base64urlEncode(JSON.stringify(refreshHeader));
-    const encryptedRefreshPayload = encrypt(refreshPayload, secret);
+    const encryptedRefreshPayload = encrypt(refreshPayload, encSecret);
     const refreshDataToSign = `${encodedRefreshHeader}.${encryptedRefreshPayload}`;
 
-    const refreshSignature = crypto
-      .createHmac("sha256", secret)
-      .update(refreshDataToSign)
-      .digest("base64url");
+    let refreshSignature: string;
+    if (isPem) {
+      const signer = crypto.createSign("SHA256");
+      signer.update(refreshDataToSign);
+      refreshSignature = signer.sign(secretOrPrivateKey, "base64url");
+    } else {
+      refreshSignature = crypto
+        .createHmac("sha256", secretOrPrivateKey)
+        .update(refreshDataToSign)
+        .digest("base64url");
+    }
 
     refreshToken = `${refreshDataToSign}.${refreshSignature}`;
   }
@@ -157,4 +186,3 @@ export default async function sign(
     refreshToken,
   };
 }
-

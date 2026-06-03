@@ -24,16 +24,28 @@ export interface VerifyOptions {
      * Optional logger callback for security and audit events.
      */
     auditLogger?: AuditLogger;
+    /**
+     * Separate payload decryption key. Mandatory if using asymmetric keys and verifier needs to decrypt.
+     */
+    encryptionSecret?: string;
+    /**
+     * Optional browser-generated signature (DPoP) for request proof-of-possession.
+     */
+    clientSignature?: string;
+    /**
+     * The plaintext payload (JSON string containing timestamp/URL/method) signed by the browser.
+     */
+    clientPayload?: string;
 }
 /**
  * Verifies and decrypts a Secure Web Token (SWT).
  *
  * @param token - The SWT string to verify.
- * @param secret - The secret key used for decryption and signature verification.
+ * @param secretOrPublicKey - The secret key (or PEM Public Key) used for decryption and signature verification.
  * @param options - Verification options.
  *
  * @returns The decrypted payload data.
- * @throws {Error} If the token is invalid, expired, or session verification fails.
+ * @throws {Error} If the token is invalid, expired, or session/DPoP verification fails.
  */
-export default function verify(token: string, secret: string, options?: VerifyOptions): Promise<Record<string, any>>;
+export default function verify(token: string, secretOrPublicKey: string, options?: VerifyOptions): Promise<Record<string, any>>;
 //# sourceMappingURL=verify.d.ts.map

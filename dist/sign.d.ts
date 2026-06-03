@@ -40,17 +40,25 @@ export interface SignOptions {
      * Pre-existing session ID to bind.
      */
     sessionId?: string;
+    /**
+     * Separate payload encryption key. Mandatory if using asymmetric keys and verifier needs to decrypt.
+     */
+    encryptionSecret?: string;
+    /**
+     * Optional browser-generated public key (JWK format) for DPoP binding.
+     */
+    clientPublicKey?: string;
 }
 /**
  * Signs a payload to create a Secure Web Token (SWT).
  *
  * @param data - The object to be encrypted in the token. Must include `userId` if using fingerprint/session mode.
- * @param secret - The secret key used for encryption and HMAC signing.
+ * @param secretOrPrivateKey - The secret key (or PEM Private Key) used for encryption and signing.
  * @param options - Configuration options for the token.
  *
  * @returns An object containing the generated `token`, optional `sessionId`, and optional `refreshToken`.
  */
-export default function sign(data: Record<string, any>, secret: string, options?: SignOptions): Promise<{
+export default function sign(data: Record<string, any>, secretOrPrivateKey: string, options?: SignOptions): Promise<{
     token: string;
     sessionId?: string;
     refreshToken?: string;

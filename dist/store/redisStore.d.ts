@@ -10,12 +10,13 @@ export interface RedisStoreOptions {
     prefix?: string;
 }
 /**
- * Pluggable Redis store adapter.
+ * Pluggable Resilient Redis store adapter with In-Memory failover.
  * Works with ioredis, redis (npm library), or any client that supports standard get/set/del.
  */
 export declare class RedisStore implements Store {
     private client;
     private options;
+    private fallbackStore;
     constructor(client: any, options?: RedisStoreOptions);
     private getKey;
     registerSession(session: Session): Promise<void>;

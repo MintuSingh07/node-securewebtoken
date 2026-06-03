@@ -19,7 +19,7 @@ export interface SwtRequest {
  */
 export interface MiddlewareOptions {
     /**
-     * The secret key used for verifying the token signature.
+     * The secret key (or PEM Public Key) used for verifying the token signature.
      */
     secret: string;
     /**
@@ -41,17 +41,21 @@ export interface MiddlewareOptions {
     fingerprint?: boolean;
     /**
      * Custom function to extract device fingerprint from request headers or IP.
-     * If not provided, defaults to the request's User-Agent string.
+     * If not provided, defaults to the request's User-Agent string (logs a security warning).
      */
     getFingerprint?: (req: any) => string;
     /**
      * Optional logger callback for security events.
      */
     auditLogger?: AuditLogger;
+    /**
+     * Separate payload decryption key. Mandatory if using asymmetric keys and verifier needs to decrypt.
+     */
+    encryptionSecret?: string;
 }
 /**
  * Express middleware helper to authenticate and verify Secure Web Tokens.
- * Automatically extracts the token and validates device fingerprinting.
+ * Automatically extracts the token and validates device fingerprinting & DPoP.
  *
  * @param options - Config options for the middleware.
  * @returns An Express-compatible middleware handler.
