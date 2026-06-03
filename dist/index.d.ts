@@ -4,8 +4,12 @@
  */
 export { default as sign } from "./sign";
 export { default as verify } from "./verify";
-export { getStore, StoreType } from "./store";
+export { default as refresh } from "./refresh";
+export { swtMiddleware } from "./middleware";
+export { getStore, StoreType, Store, Session, RedisStore, RedisStoreOptions, MemoryStore } from "./store";
+export { AuditLogger, AuditLogEvent, AuditEventName } from "./audit";
 export type { SignOptions } from "./sign";
 export type { VerifyOptions } from "./verify";
-export type { Store } from "./store/types";
+export type { RefreshOptions } from "./refresh";
+export type { MiddlewareOptions, SwtRequest } from "./middleware";
 //# sourceMappingURL=index.d.ts.map

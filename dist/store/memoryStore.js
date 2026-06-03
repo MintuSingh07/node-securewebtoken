@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.memoryStore = void 0;
+exports.memoryStore = exports.MemoryStore = void 0;
 class MemoryStore {
     constructor() {
         this.sessions = new Map();
@@ -15,4 +15,5 @@ class MemoryStore {
         this.sessions.delete(sessionId);
     }
 }
+exports.MemoryStore = MemoryStore;
 exports.memoryStore = new MemoryStore();

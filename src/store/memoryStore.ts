@@ -1,16 +1,9 @@
-import { Store } from "./types";
+import { Store, Session } from "./types";
 
-interface Session {
-    sessionId: string;
-    userId: string | number;
-    deviceId: string;
-    fingerprint: string;
-}
-
-class MemoryStore implements Store {
+export class MemoryStore implements Store {
     private sessions = new Map<string, Session>();
 
-    registerSession(session: Session) {
+    registerSession(session: Session): void {
         this.sessions.set(session.sessionId, session);
     }
 
@@ -18,9 +11,10 @@ class MemoryStore implements Store {
         return this.sessions.get(sessionId) || null;
     }
 
-    revokeSession(sessionId: string) {
+    revokeSession(sessionId: string): void {
         this.sessions.delete(sessionId);
     }
 }
 
 export const memoryStore: MemoryStore = new MemoryStore();
+

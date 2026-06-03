@@ -2,7 +2,8 @@ import * as crypto from "crypto";
 import encrypt from "./encrypt";
 import { base64urlEncode } from "./utils";
 import { generateDeviceId } from "./device";
-import { getStore, StoreType } from "./store";
+import { getStore, StoreType, Store } from "./store";
+import { AuditLogger, logEvent } from "./audit";
 
 /**
  * Options for signing a Secure Web Token.
@@ -14,12 +15,33 @@ export interface SignOptions {
   expiresIn?: number;
   /**
    * Whether to enable fingerprint/session mode. If true, generates a device-bound session.
+   * Can be a boolean or a custom fingerprint string (e.g., User-Agent or IP).
    */
-  fingerprint?: true; // enable device/session mode
+  fingerprint?: boolean | string;
   /**
-   * The store type to use for session persistence.
+   * The store type or store instance to use for session persistence.
    */
-  store?: StoreType;
+  store?: StoreType | Store;
+  /**
+   * Whether to generate a refresh token alongside the access token.
+   */
+  generateRefreshToken?: boolean;
+  /**
+   * Refresh token expiration time in seconds. Defaults to 604800 (7 days).
+   */
+  refreshExpiresIn?: number;
+  /**
+   * Optional logger callback for security and audit events.
+   */
+  auditLogger?: AuditLogger;
+  /**
+   * Pre-existing device ID to bind. If not provided and fingerprint is true, generates a new one.
+   */
+  deviceId?: string;
+  /**
+   * Pre-existing session ID to bind.
+   */
+  sessionId?: string;
 }
 
 /**
@@ -28,20 +50,14 @@ export interface SignOptions {
  * @param data - The object to be encrypted in the token. Must include `userId` if using fingerprint/session mode.
  * @param secret - The secret key used for encryption and HMAC signing.
  * @param options - Configuration options for the token.
- * @param options.expiresIn - Token expiration time in seconds (default: 900).
- * @param options.fingerprint - Set to true to enable device-bound session mode.
- * @param options.store - The store type to use for session persistence (e.g., 'memory').
  * 
- * @returns An object containing the generated `token` and an optional `sessionId` if fingerprinting is enabled.
- * 
- * @example
- * const { token, sessionId } = sign({ userId: '123' }, 'my-secret', { fingerprint: true });
+ * @returns An object containing the generated `token`, optional `sessionId`, and optional `refreshToken`.
  */
-export default function sign(
+export default async function sign(
   data: Record<string, any>,
   secret: string,
   options: SignOptions = {}
-): { token: string; sessionId?: string } {
+): Promise<{ token: string; sessionId?: string; refreshToken?: string }> {
 
   if (!secret || typeof secret !== "string") throw new Error("Secret required");
   if (!data || typeof data !== "object") throw new Error("Data must be object");
@@ -59,21 +75,23 @@ export default function sign(
   let deviceId: string | undefined;
 
   // Backend-only device/session mode
-  if (options.fingerprint === true) {
-    deviceId = generateDeviceId();
+  if (options.fingerprint || options.deviceId) {
+    deviceId = options.deviceId ?? generateDeviceId();
     payload.fp = deviceId;
-    sessionId = crypto.randomUUID();
+    sessionId = options.sessionId ?? crypto.randomUUID();
 
-    const store = getStore(options.store);
-    if (store) {
-      store.registerSession({
+    // Resolve store instance (support direct Store injection or store type string)
+    const store = typeof options.store === "string" ? getStore(options.store) : options.store;
+    if (store && !options.sessionId) {
+      await store.registerSession({
         sessionId,
         userId: data.userId,
         deviceId,
-        fingerprint: deviceId,
+        fingerprint: typeof options.fingerprint === "string" ? options.fingerprint : deviceId,
       });
     }
   }
+
 
   const header = {
     alg: "AES-256-GCM+HMAC",
@@ -89,8 +107,51 @@ export default function sign(
     .update(dataToSign)
     .digest("base64url");
 
+  const token = `${dataToSign}.${signature}`;
+
+  let refreshToken: string | undefined;
+
+  if (options.generateRefreshToken === true) {
+    const refreshPayload: Record<string, any> = {
+      data: { userId: data.userId },
+      iat: now,
+      exp: now + (options.refreshExpiresIn ?? 604800), // Default to 7 days
+      isRefresh: true,
+    };
+
+    if (deviceId) {
+      refreshPayload.fp = deviceId;
+    }
+
+    const refreshHeader = {
+      alg: "AES-256-GCM+HMAC",
+      typ: "SWT-Refresh",
+    };
+
+    const encodedRefreshHeader = base64urlEncode(JSON.stringify(refreshHeader));
+    const encryptedRefreshPayload = encrypt(refreshPayload, secret);
+    const refreshDataToSign = `${encodedRefreshHeader}.${encryptedRefreshPayload}`;
+
+    const refreshSignature = crypto
+      .createHmac("sha256", secret)
+      .update(refreshDataToSign)
+      .digest("base64url");
+
+    refreshToken = `${refreshDataToSign}.${refreshSignature}`;
+  }
+
+  // Trigger audit log event
+  await logEvent(options.auditLogger, {
+    event: "sign",
+    userId: data.userId,
+    sessionId,
+    deviceId,
+  });
+
   return {
-    token: `${dataToSign}.${signature}`,
-    sessionId, // to set in HttpOnly cookie
+    token,
+    sessionId,
+    refreshToken,
   };
 }
+

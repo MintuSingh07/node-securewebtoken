@@ -5,11 +5,18 @@
 
 export { default as sign } from "./sign";
 export { default as verify } from "./verify";
+export { default as refresh } from "./refresh";
+export { swtMiddleware } from "./middleware";
 
-// Export store helpers
-export { getStore, StoreType } from "./store";
+// Export store helpers & classes
+export { getStore, StoreType, Store, Session, RedisStore, RedisStoreOptions, MemoryStore } from "./store";
 
-// Export types
+// Export audit logging types
+export { AuditLogger, AuditLogEvent, AuditEventName } from "./audit";
+
+// Export options and middleware types
 export type { SignOptions } from "./sign";
 export type { VerifyOptions } from "./verify";
-export type { Store } from "./store/types";
+export type { RefreshOptions } from "./refresh";
+export type { MiddlewareOptions, SwtRequest } from "./middleware";
+

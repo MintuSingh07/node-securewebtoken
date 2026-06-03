@@ -1,4 +1,5 @@
-import { StoreType } from "./store";
+import { StoreType, Store } from "./store";
+import { AuditLogger } from "./audit";
 /**
  * Options for verifying a Secure Web Token.
  */
@@ -12,9 +13,13 @@ export interface VerifyOptions {
      */
     fingerprint?: string;
     /**
-     * The store type used to retrieve session data.
+     * The store type or store instance used to retrieve session data.
      */
-    store?: StoreType;
+    store?: StoreType | Store;
+    /**
+     * Optional logger callback for security and audit events.
+     */
+    auditLogger?: AuditLogger;
 }
 /**
  * Verifies and decrypts a Secure Web Token (SWT).
@@ -22,12 +27,9 @@ export interface VerifyOptions {
  * @param token - The SWT string to verify.
  * @param secret - The secret key used for decryption and signature verification.
  * @param options - Verification options.
- * @param options.sessionId - The session ID to verify against the store (Backend-only mode).
- * @param options.fingerprint - The device/session fingerprint to verify.
- * @param options.store - The store type used for session verification.
  *
  * @returns The decrypted payload data.
  * @throws {Error} If the token is invalid, expired, or session verification fails.
  */
-export default function verify(token: string, secret: string, options?: VerifyOptions): Record<string, any>;
+export default function verify(token: string, secret: string, options?: VerifyOptions): Promise<Record<string, any>>;
 //# sourceMappingURL=verify.d.ts.map

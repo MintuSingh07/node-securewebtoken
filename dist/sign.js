@@ -42,22 +42,17 @@ const encrypt_1 = __importDefault(require("./encrypt"));
 const utils_1 = require("./utils");
 const device_1 = require("./device");
 const store_1 = require("./store");
+const audit_1 = require("./audit");
 /**
  * Signs a payload to create a Secure Web Token (SWT).
  *
  * @param data - The object to be encrypted in the token. Must include `userId` if using fingerprint/session mode.
  * @param secret - The secret key used for encryption and HMAC signing.
  * @param options - Configuration options for the token.
- * @param options.expiresIn - Token expiration time in seconds (default: 900).
- * @param options.fingerprint - Set to true to enable device-bound session mode.
- * @param options.store - The store type to use for session persistence (e.g., 'memory').
  *
- * @returns An object containing the generated `token` and an optional `sessionId` if fingerprinting is enabled.
- *
- * @example
- * const { token, sessionId } = sign({ userId: '123' }, 'my-secret', { fingerprint: true });
+ * @returns An object containing the generated `token`, optional `sessionId`, and optional `refreshToken`.
  */
-function sign(data, secret, options = {}) {
+async function sign(data, secret, options = {}) {
     if (!secret || typeof secret !== "string")
         throw new Error("Secret required");
     if (!data || typeof data !== "object")
@@ -73,17 +68,18 @@ function sign(data, secret, options = {}) {
     let sessionId;
     let deviceId;
     // Backend-only device/session mode
-    if (options.fingerprint === true) {
-        deviceId = (0, device_1.generateDeviceId)();
+    if (options.fingerprint || options.deviceId) {
+        deviceId = options.deviceId ?? (0, device_1.generateDeviceId)();
         payload.fp = deviceId;
-        sessionId = crypto.randomUUID();
-        const store = (0, store_1.getStore)(options.store);
-        if (store) {
-            store.registerSession({
+        sessionId = options.sessionId ?? crypto.randomUUID();
+        // Resolve store instance (support direct Store injection or store type string)
+        const store = typeof options.store === "string" ? (0, store_1.getStore)(options.store) : options.store;
+        if (store && !options.sessionId) {
+            await store.registerSession({
                 sessionId,
                 userId: data.userId,
                 deviceId,
-                fingerprint: deviceId,
+                fingerprint: typeof options.fingerprint === "string" ? options.fingerprint : deviceId,
             });
         }
     }
@@ -98,8 +94,41 @@ function sign(data, secret, options = {}) {
         .createHmac("sha256", secret)
         .update(dataToSign)
         .digest("base64url");
+    const token = `${dataToSign}.${signature}`;
+    let refreshToken;
+    if (options.generateRefreshToken === true) {
+        const refreshPayload = {
+            data: { userId: data.userId },
+            iat: now,
+            exp: now + (options.refreshExpiresIn ?? 604800), // Default to 7 days
+            isRefresh: true,
+        };
+        if (deviceId) {
+            refreshPayload.fp = deviceId;
+        }
+        const refreshHeader = {
+            alg: "AES-256-GCM+HMAC",
+            typ: "SWT-Refresh",
+        };
+        const encodedRefreshHeader = (0, utils_1.base64urlEncode)(JSON.stringify(refreshHeader));
+        const encryptedRefreshPayload = (0, encrypt_1.default)(refreshPayload, secret);
+        const refreshDataToSign = `${encodedRefreshHeader}.${encryptedRefreshPayload}`;
+        const refreshSignature = crypto
+            .createHmac("sha256", secret)
+            .update(refreshDataToSign)
+            .digest("base64url");
+        refreshToken = `${refreshDataToSign}.${refreshSignature}`;
+    }
+    // Trigger audit log event
+    await (0, audit_1.logEvent)(options.auditLogger, {
+        event: "sign",
+        userId: data.userId,
+        sessionId,
+        deviceId,
+    });
     return {
-        token: `${dataToSign}.${signature}`,
-        sessionId, // to set in HttpOnly cookie
+        token,
+        sessionId,
+        refreshToken,
     };
 }
