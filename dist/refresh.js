@@ -21,10 +21,11 @@ async function refresh(refreshToken, secret, options = {}) {
         if (!refreshToken)
             throw new Error("Refresh token required");
         // 1. Verify and decrypt the refresh token.
-        // If sessionId and fingerprint are provided, verify() will automatically check them.
+        // If sessionId and clientFingerprint are provided, verify() will automatically check them.
         const payload = await (0, verify_1.default)(refreshToken, secret, {
             sessionId: options.sessionId,
             fingerprint: options.fingerprint,
+            clientFingerprint: options.clientFingerprint,
             store: options.store,
             auditLogger: options.auditLogger, // Let verify handle audit logging internally
         });

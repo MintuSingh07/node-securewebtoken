@@ -36,6 +36,10 @@ export interface MiddlewareOptions {
      */
     requireSession?: boolean;
     /**
+     * Whether to enable fingerprint/device verification. Defaults to true.
+     */
+    fingerprint?: boolean;
+    /**
      * Custom function to extract device fingerprint from request headers or IP.
      * If not provided, defaults to the request's User-Agent string.
      */

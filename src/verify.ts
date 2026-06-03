@@ -13,9 +13,13 @@ export interface VerifyOptions {
    */
   sessionId?: string; // read from HttpOnly cookie
   /**
-   * The unique fingerprint of the device/session.
+   * Whether session/device verification is enabled.
    */
-  fingerprint?: string;
+  fingerprint?: boolean;
+  /**
+   * The unique client fingerprint string (e.g., User-Agent or IP).
+   */
+  clientFingerprint?: string;
   /**
    * The store type or store instance used to retrieve session data.
    */
@@ -66,8 +70,8 @@ export default async function verify(
 
     // Server-side session verification
     if (payload.fp || options.sessionId || options.fingerprint) {
-      if (!options.sessionId || !options.fingerprint) {
-        throw new Error("Session ID and fingerprint are required for device-bound tokens");
+      if (!options.sessionId) {
+        throw new Error("Session ID is required for device-bound tokens");
       }
 
       const store = typeof options.store === "string" ? getStore(options.store) : options.store;
@@ -76,7 +80,9 @@ export default async function verify(
       const session = await store.getSession(options.sessionId);
       if (!session) throw new Error("Session revoked or invalid");
       if (session.userId !== payload.data.userId) throw new Error("User mismatch");
-      if (session.fingerprint !== options.fingerprint) throw new Error("Device mismatch");
+
+      const expectedFingerprint = options.clientFingerprint ?? payload.fp;
+      if (session.fingerprint !== expectedFingerprint) throw new Error("Device mismatch");
     }
 
     // Trigger audit log success event

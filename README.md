@@ -165,11 +165,12 @@ const { token, sessionId, refreshToken } = await sign(
   { userId: "user_101", role: "admin" },
   SECRET,
   {
-    fingerprint: true,           // bind to this device
-    store: store,                // persist state in Redis
-    expiresIn: 900,              // 15 minutes access token expiry
-    generateRefreshToken: true,  // generate long-lived refresh token
-    refreshExpiresIn: 604800     // 7 days refresh token expiry
+    fingerprint: true,                   // Enable device binding and session state
+    clientFingerprint: "Mozilla/5.0...",  // (Optional) Pass client browser fingerprint
+    store: store,                        // Persist state in Redis
+    expiresIn: 900,                      // 15 minutes access token expiry
+    generateRefreshToken: true,          // Generate long-lived refresh token
+    refreshExpiresIn: 604800             // 7 days refresh token expiry
   }
 );
 
@@ -187,8 +188,9 @@ const session = await store.getSession(sessionId); // reads from Redis
 
 const payload = await verify(token, SECRET, {
   sessionId,
-  fingerprint: session.fingerprint, // must match original device
-  store: store,                     // read verification mapping from Redis
+  fingerprint: true,                   // Enable session/device verification
+  clientFingerprint: "Mozilla/5.0...",  // (Optional) Current browser fingerprint
+  store: store,                        // Read verification mapping from Redis
 });
 
 // payload.data → { userId: "user_101", role: "admin" }
@@ -203,8 +205,9 @@ const store = new RedisStore(redisClient);
 
 const rotated = await refresh(oldRefreshToken, SECRET, {
   sessionId,
-  fingerprint: requestFingerprint,
-  store: store, // Validate and rotate session records inside Redis
+  fingerprint: true,
+  clientFingerprint: requestFingerprint, // Pass current client fingerprint
+  store: store,                          // Validate and rotate session records inside Redis
   expiresIn: 900,
   refreshExpiresIn: 604800
 });
@@ -259,6 +262,7 @@ app.post("/login", async (req, res) => {
 
   const { token, sessionId, refreshToken } = await sign(user, SECRET, {
     fingerprint: true,
+    clientFingerprint: req.headers["user-agent"] || "", // Bind client user-agent
     store: redisStore,
     expiresIn: 900,
     generateRefreshToken: true,
@@ -284,6 +288,7 @@ app.get(
     secret: SECRET,
     store: redisStore,
     requireSession: true, // performs Redis verification check
+    fingerprint: true,    // Enable fingerprint checks
     getFingerprint: (req) => req.headers["user-agent"] || "unknown"
   }),
   (req, res) => {
@@ -299,12 +304,13 @@ app.post("/refresh", async (req, res) => {
   try {
     const { refreshToken } = req.body;
     const sessionId = req.cookies.swt_session;
-    const fingerprint = req.headers["user-agent"] || "unknown";
+    const clientFingerprint = req.headers["user-agent"] || "unknown";
 
     // Rotates the tokens, verifying existing states in Redis
     const rotated = await refresh(refreshToken, SECRET, {
       sessionId,
-      fingerprint,
+      fingerprint: true,
+      clientFingerprint,
       store: redisStore,
       expiresIn: 900,
       refreshExpiresIn: 604800
@@ -353,7 +359,8 @@ Generates an encrypted token and registers a session (writes to Redis if `RedisS
   * `data`: `Record<string, any>` — Payload object to encrypt. Must include `userId`.
   * `secret`: `string` — Key derivation and signature secret.
   * `options`: `SignOptions`
-    * `fingerprint`: `boolean` — Enables device binding and session state.
+    * `fingerprint`: `boolean` — Enables device binding and session state (default: `false`).
+    * `clientFingerprint`: `string` — (Optional) Custom browser/client identity string (User-Agent, IP, etc.).
     * `store`: `StoreType | Store` — Pass your instanced `RedisStore`.
     * `expiresIn`: `number` — Access token lifespan in seconds (default: `900`).
     * `generateRefreshToken`: `boolean` — Generates a refresh token.
@@ -368,7 +375,8 @@ Verifies token signature, decrypts payload, and validates state boundaries again
   * `secret`: `string` — Decryption secret.
   * `options`: `VerifyOptions`
     * `sessionId`: `string` — Session ID cookie.
-    * `fingerprint`: `string` — Request device fingerprint.
+    * `fingerprint`: `boolean` — Enables session/device verification.
+    * `clientFingerprint`: `string` — (Optional) Current browser/client identity string to verify.
     * `store`: `StoreType | Store` — Pass your instanced `RedisStore`.
     * `auditLogger`: `AuditLogger` — Audits success/failure events.
 * **Returns:** `Promise<Record<string, any>>`
@@ -380,7 +388,8 @@ Validates refresh token claims against Redis state and emits a rotated access/re
   * `secret`: `string` — Secret key.
   * `options`: `RefreshOptions`
     * `sessionId`: `string` — Session ID.
-    * `fingerprint`: `string` — Device fingerprint.
+    * `fingerprint`: `boolean` — Enables session/device verification.
+    * `clientFingerprint`: `string` — (Optional) Current browser/client identity string.
     * `store`: `StoreType | Store` — Pass your instanced `RedisStore`.
 * **Returns:** `Promise<{ token: string; sessionId?: string; refreshToken?: string }>`
 
@@ -392,6 +401,7 @@ Express middleware validation helper.
     * `store`: `StoreType | Store` — Pass your instanced `RedisStore`.
     * `cookieName`: `string` — Cookie name (default: `"swt_session"`).
     * `requireSession`: `boolean` — Performs Redis check.
+    * `fingerprint`: `boolean` — Enables fingerprint/device verification (default: `true`).
     * `getFingerprint`: `(req) => string` — Custom fingerprint callback.
 * **Returns:** Express middleware handler.
 

@@ -75,8 +75,8 @@ async function verify(token, secret, options = {}) {
             throw new Error("Invalid payload");
         // Server-side session verification
         if (payload.fp || options.sessionId || options.fingerprint) {
-            if (!options.sessionId || !options.fingerprint) {
-                throw new Error("Session ID and fingerprint are required for device-bound tokens");
+            if (!options.sessionId) {
+                throw new Error("Session ID is required for device-bound tokens");
             }
             const store = typeof options.store === "string" ? (0, store_1.getStore)(options.store) : options.store;
             if (!store)
@@ -86,7 +86,8 @@ async function verify(token, secret, options = {}) {
                 throw new Error("Session revoked or invalid");
             if (session.userId !== payload.data.userId)
                 throw new Error("User mismatch");
-            if (session.fingerprint !== options.fingerprint)
+            const expectedFingerprint = options.clientFingerprint ?? payload.fp;
+            if (session.fingerprint !== expectedFingerprint)
                 throw new Error("Device mismatch");
         }
         // Trigger audit log success event

@@ -40,6 +40,10 @@ export interface MiddlewareOptions {
    */
   requireSession?: boolean;
   /**
+   * Whether to enable fingerprint/device verification. Defaults to true.
+   */
+  fingerprint?: boolean;
+  /**
    * Custom function to extract device fingerprint from request headers or IP.
    * If not provided, defaults to the request's User-Agent string.
    */
@@ -60,6 +64,7 @@ export interface MiddlewareOptions {
 export function swtMiddleware(options: MiddlewareOptions) {
   const cookieName = options.cookieName ?? "swt_session";
   const requireSession = options.requireSession ?? true;
+  const useFingerprint = options.fingerprint ?? true;
   const storeInstance = typeof options.store === "string" ? getStore(options.store) : options.store;
 
   return async (req: any, res: any, next: NextFunction): Promise<void> => {
@@ -74,7 +79,7 @@ export function swtMiddleware(options: MiddlewareOptions) {
       const sessionId = req.cookies ? req.cookies[cookieName] : undefined;
 
       let fingerprint: string | undefined;
-      if (requireSession) {
+      if (requireSession && useFingerprint) {
         if (options.getFingerprint) {
           fingerprint = options.getFingerprint(req);
         } else {
@@ -86,7 +91,8 @@ export function swtMiddleware(options: MiddlewareOptions) {
       // Verify the token using our core async verify function
       const payload = await verify(token, options.secret, {
         sessionId: requireSession ? sessionId : undefined,
-        fingerprint: requireSession ? fingerprint : undefined,
+        fingerprint: requireSession ? useFingerprint : undefined,
+        clientFingerprint: fingerprint,
         store: requireSession ? (storeInstance || undefined) : undefined,
         auditLogger: options.auditLogger,
       });

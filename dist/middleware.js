@@ -16,6 +16,7 @@ const store_1 = require("./store");
 function swtMiddleware(options) {
     const cookieName = options.cookieName ?? "swt_session";
     const requireSession = options.requireSession ?? true;
+    const useFingerprint = options.fingerprint ?? true;
     const storeInstance = typeof options.store === "string" ? (0, store_1.getStore)(options.store) : options.store;
     return async (req, res, next) => {
         try {
@@ -27,7 +28,7 @@ function swtMiddleware(options) {
             const token = authHeader.split(" ")[1];
             const sessionId = req.cookies ? req.cookies[cookieName] : undefined;
             let fingerprint;
-            if (requireSession) {
+            if (requireSession && useFingerprint) {
                 if (options.getFingerprint) {
                     fingerprint = options.getFingerprint(req);
                 }
@@ -39,7 +40,8 @@ function swtMiddleware(options) {
             // Verify the token using our core async verify function
             const payload = await (0, verify_1.default)(token, options.secret, {
                 sessionId: requireSession ? sessionId : undefined,
-                fingerprint: requireSession ? fingerprint : undefined,
+                fingerprint: requireSession ? useFingerprint : undefined,
+                clientFingerprint: fingerprint,
                 store: requireSession ? (storeInstance || undefined) : undefined,
                 auditLogger: options.auditLogger,
             });

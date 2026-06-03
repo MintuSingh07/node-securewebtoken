@@ -17,9 +17,13 @@ export interface RefreshOptions {
      */
     sessionId?: string;
     /**
-     * The unique fingerprint of the device/session.
+     * Whether session/device verification is enabled.
      */
-    fingerprint?: string;
+    fingerprint?: boolean;
+    /**
+     * The unique client fingerprint string (e.g., User-Agent or IP).
+     */
+    clientFingerprint?: string;
     /**
      * The store type or store instance used for session verification.
      */

@@ -10,9 +10,12 @@ export interface SignOptions {
     expiresIn?: number;
     /**
      * Whether to enable fingerprint/session mode. If true, generates a device-bound session.
-     * Can be a boolean or a custom fingerprint string (e.g., User-Agent or IP).
      */
-    fingerprint?: boolean | string;
+    fingerprint?: boolean;
+    /**
+     * The unique client fingerprint string (e.g., User-Agent or IP).
+     */
+    clientFingerprint?: string;
     /**
      * The store type or store instance to use for session persistence.
      */

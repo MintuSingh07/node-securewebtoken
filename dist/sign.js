@@ -79,7 +79,7 @@ async function sign(data, secret, options = {}) {
                 sessionId,
                 userId: data.userId,
                 deviceId,
-                fingerprint: typeof options.fingerprint === "string" ? options.fingerprint : deviceId,
+                fingerprint: options.clientFingerprint ?? deviceId,
             });
         }
     }
