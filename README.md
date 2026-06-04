@@ -96,90 +96,16 @@ npm install secure-web-token
 ### Clustered / Distributed Session State
 In a production cloud environment, incoming traffic is distributed across multiple nodes. SWT uses a shared, low-latency Redis cache to store active session bindings. Any node can authenticate request signatures and cross-verify the state in Redis:
 
-```mermaid
-graph TD
-    %% Define Styles
-    classDef client fill:#eef2f3,stroke:#374151,stroke-width:1px,color:#1f2937;
-    classDef lb fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0369a1,stroke-dasharray: 5 5;
-    classDef server fill:#ecfdf5,stroke:#059669,stroke-width:2px,color:#047857;
-    classDef database fill:#fef2f2,stroke:#dc2626,stroke-width:2px,color:#b91c1c;
-
-    %% Nodes
-    Client[Client / Browser]:::client
-    LB[Load Balancer / API Gateway]:::lb
-    
-    subgraph AppServers [Application Nodes]
-        NodeA[Server Node A]:::server
-        NodeB[Server Node B]:::server
-        NodeC[Server Node C]:::server
-    end
-    
-    Redis[(Shared Redis Session Store<br/>'swt:session:*')]:::database
-
-    %% Connections
-    Client -->|HTTPS Request| LB
-    LB --> NodeA
-    LB --> NodeB
-    LB --> NodeC
-    
-    NodeA <-->|Session Verification| Redis
-    NodeB <-->|Session Verification| Redis
-    NodeC <-->|Session Verification| Redis
-```
+<p align="center">
+  <img src="https://mermaid.ink/img/Z3JhcGggVEQKICAgIGNsYXNzRGVmIGNsaWVudCBmaWxsOiNlZWYyZjMsc3Ryb2tlOiMzNzQxNTEsc3Ryb2tlLXdpZHRoOjFweCxjb2xvcjojMWYyOTM3OwogICAgY2xhc3NEZWYgbGIgZmlsbDojZTBmMmZlLHN0cm9rZTojMDI4NGM3LHN0cm9rZS13aWR0aDoycHgsY29sb3I6IzAzNjlhMSxzdHJva2UtZGFzaGFycmF5OiA1IDU7CiAgICBjbGFzc0RlZiBzZXJ2ZXIgZmlsbDojZWNmZGY1LHN0cm9rZTojMDU5NjY5LHN0cm9rZS13aWR0aDoycHgsY29sb3I6IzA0Nzg1NzsKICAgIGNsYXNzRGVmIGRhdGFiYXNlIGZpbGw6I2ZlZjJmMixzdHJva2U6I2RjMjYyNixzdHJva2Utd2lkdGg6MnB4LGNvbG9yOiNiOTFjMWM7CgogICAgQ2xpZW50W0NsaWVudCAvIEJyb3dzZXJdOjo6Y2xpZW50CiAgICBMQltMb2FkIEJhbGFuY2VyIC8gQVBJIEdhdGV3YXldOjo6bGIKICAgIAogICAgc3ViZ3JhcGggQXBwU2VydmVycyBbQXBwbGljYXRpb24gTm9kZXNdCiAgICAgICAgTm9kZUFbU2VydmVyIE5vZGUgQV06OjpzZXJ2ZXIKICAgICAgICBOb2RlQltTZXJ2ZXIgTm9kZSBCXTo6OnNlcnZlcgogICAgICAgIE5vZGVDW1NlcnZlciBOb2RlIENdOjo6c2VydmVyCiAgICBlbmQKICAgIAogICAgUmVkaXNbKFNoYXJlZCBSZWRpcyBTZXNzaW9uIFN0b3JlPGJyLz4nc3d0OnNlc3Npb246KicpXTo6OmRhdGFiYXNlCgogICAgQ2xpZW50IC0tPnxIVFRQUyBSZXF1ZXN0fCBMQgogICAgTEIgLS0-IE5vZGVBCiAgICBMQiAtLT4gTm9kZUIKICAgIExCIC0tPiBOb2RlQwogICAgCiAgICBOb2RlQSA8LS0-fFNlc3Npb24gVmVyaWZpY2F0aW9ufCBSZWRpcwogICAgTm9kZUIgPC0tPnxTZXNzaW9uIFZlcmlmaWNhdGlvbnwgUmVkaXMKICAgIE5vZGVDIDwtLT58U2Vzc2lvbiBWZXJpZmljYXRpb258IFJlZGlz" alt="Clustered Session State Architecture Diagram" width="700" />
+</p>
 
 ### Complete Authentication Lifecycle (Sign, Verify, Logout)
 The following sequence diagram outlines how SWT processes tokens, registers state, verifies requests, and handles revocation:
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor Client as Client / Browser
-    participant Server as Application Server
-    participant Redis as Redis Session Store
-
-    %% Sign Block
-    rect rgb(240, 249, 255)
-        Note over Client, Redis: 1. Authentication & Token Generation (Sign Flow)
-    end
-    Client->>Server: POST /login (Credentials)
-    activate Server
-    Note over Server: 1. Authenticate user credentials<br/>2. Generate deviceId & sessionId (UUIDs)<br/>3. sign(payload, secret, { fingerprint: true })<br/>4. Encrypt payload via AES-256-GCM
-    Server->>Redis: registerSession({ sessionId, userId, fingerprint })
-    activate Redis
-    Redis-->>Server: Acknowledge session stored
-    deactivate Redis
-    Server-->>Client: Response: { token } + HttpOnly Cookie: sessionId
-    deactivate Server
-
-    %% Verify Block
-    rect rgb(240, 253, 244)
-        Note over Client, Redis: 2. Request Authorization (Verify Flow)
-    end
-    Client->>Server: GET /profile (Authorization Bearer + Session Cookie)
-    activate Server
-    Note over Server: verify(token, secret, { sessionId, fingerprint })<br/>1. Validate HMAC-SHA256 signature<br/>2. Check expiration (exp) pre-decryption<br/>3. Decrypt payload (AES-256-GCM)
-    Server->>Redis: getSession(sessionId)
-    activate Redis
-    Redis-->>Server: Return active session data
-    deactivate Redis
-    Note over Server: Validate session matches token & request fingerprint
-    Server-->>Client: Serve protected resource (200 OK + payload)
-    deactivate Server
-
-    %% Logout Block
-    rect rgb(254, 242, 242)
-        Note over Client, Redis: 3. Session Revocation (Logout Flow)
-    end
-    Client->>Server: POST /logout (Session Cookie)
-    activate Server
-    Server->>Redis: revokeSession(sessionId)
-    activate Redis
-    Redis-->>Server: Acknowledge session deleted
-    deactivate Redis
-    Note over Server: Clear HttpOnly session cookie
-    Server-->>Client: Response: { message: "Logged out!" }
-    deactivate Server
-```
+<p align="center">
+  <img src="https://mermaid.ink/img/c2VxdWVuY2VEaWFncmFtCiAgICBhdXRvbnVtYmVyCiAgICBhY3RvciBDbGllbnQgYXMgQ2xpZW50IC8gQnJvd3NlcgogICAgcGFydGljaXBhbnQgU2VydmVyIGFzIEFwcGxpY2F0aW9uIFNlcnZlcgogICAgcGFydGljaXBhbnQgUmVkaXMgYXMgUmVkaXMgU2Vzc2lvbiBTdG9yZQoKICAgIHJlY3QgcmdiKDI0MCwgMjQ5LCAyNTUpCiAgICAgICAgTm90ZSBvdmVyIENsaWVudCwgUmVkaXM6IDEuIEF1dGhlbnRpY2F0aW9uICYgVG9rZW4gR2VuZXJhdGlvbiAoU2lnbiBGbG93KQogICAgZW5kCiAgICBDbGllbnQtPj5TZXJ2ZXI6IFBPU1QgL2xvZ2luIChDcmVkZW50aWFscykKICAgIGFjdGl2YXRlIFNlcnZlcgogICAgTm90ZSBvdmVyIFNlcnZlcjogMS4gQXV0aGVudGljYXRlIHVzZXIgY3JlZGVudGlhbHM8YnIvPjIuIEdlbmVyYXRlIGRldmljZUlkICYgc2Vzc2lvbklkIChVVUlEcyk8YnIvPjMuIHNpZ24ocGF5bG9hZCwgc2VjcmV0LCB7IGZpbmdlcnByaW50OiB0cnVlIH0pPGJyLz40LiBFbmNyeXB0IHBheWxvYWQgdmlhIEFFUy0yNTYtR0NNCiAgICBTZXJ2ZXItPj5SZWRpczogcmVnaXN0ZXJTZXNzaW9uKHsgc2Vzc2lvbklkLCB1c2VySWQsIGZpbmdlcnByaW50IH0pCiAgICBhY3RpdmF0ZSBSZWRpcwogICAgUmVkaXMtLT4-U2VydmVyOiBBY2tub3dsZWRnZSBzZXNzaW9uIHN0b3JlZAogICAgZGVhY3RpdmF0ZSBSZWRpcwogICAgU2VydmVyLS0-PkNsaWVudDogUmVzcG9uc2U6IHsgdG9rZW4gfSArIEh0dHBPbmx5IENvb2tpZTogc2Vzc2lvbklkCiAgICBkZWFjdGl2YXRlIFNlcnZlcgoKICAgIHJlY3QgcmdiKDI0MCwgMjUzLCAyNDQpCiAgICAgICAgTm90ZSBvdmVyIENsaWVudCwgUmVkaXM6IDIuIFJlcXVlc3QgQXV0aG9yaXphdGlvbiAoVmVyaWZ5IEZsb3cpCiAgICBlbmQKICAgIENsaWVudC0-PlNlcnZlcjogR0VUIC9wcm9maWxlIChBdXRob3JpemF0aW9uIEJlYXJlciArIFNlc3Npb24gQ29va2llKQogICAgYWN0aXZhdGUgU2VydmVyCiAgICBOb3RlIG92ZXIgU2VydmVyOiB2ZXJpZnkodG9rZW4sIHNlY3JldCwgeyBzZXNzaW9uSWQsIGZpbmdlcnByaW50IH0pPGJyLz4xLiBWYWxpZGF0ZSBITUFDLVNIQTI1NiBzaWduYXR1cmU8YnIvPjIuIENoZWNrIGV4cGlyYXRpb24gKGV4cCkgcHJlLWRlY3J5cHRpb248YnIvPjMuIERlY3J5cHQgcGF5bG9hZCAoQUVTLTI1Ni1HQ00pCiAgICBTZXJ2ZXItPj5SZWRpczogZ2V0U2Vzc2lvbihzZXNzaW9uSWQpCiAgICBhY3RpdmF0ZSBSZWRpcwogICAgUmVkaXMtLT4-U2VydmVyOiBSZXR1cm4gYWN0aXZlIHNlc3Npb24gZGF0YQogICAgYWN0aXZhdGUgUmVkaXMKICAgIFJlZGlzLS0-PlNlcnZlcjogUmV0dXJuIGFjdGl2ZSBzZXNzaW9uIGRhdGEKICAgIGRlYWN0aXZhdGUgUmVkaXMKICAgIE5vdGUgb3ZlciBTZXJ2ZXI6IFZhbGlkYXRlIHNlc3Npb24gbWF0Y2hlcyB0b2tlbiAmIHJlcXVlc3QgZmluZ2VycHJpbnQKICAgIFNlcnZlci0tPj5DbGllbnQ6IFNlcnZlIHByb3RlY3RlZCByZXNvdXJjZSAoMjAwIE9LICsgcGF5bG9hZCkKICAgIGRlYWN0aXZhdGUgU2VydmVyCgogICAgcmVjdCByZ2IoMjU0LCAyNDIsIDI0MikKICAgICAgICBOb3RlIG92ZXIgQ2xpZW50LCBSZWRpczogMy4gU2Vzc2lvbiBSZXZvY2F0aW9uIChMb2dvdXQgRmxvdykKICAgIGVuZApJQ2xpZW50LT4-U2VydmVyOiBQT1NUIC9sb2dvdXQgKFNlc3Npb24gQ29va2llKQogICAgYWN0aXZhdGUgU2VydmVyCiAgICBTZXJ2ZXItPj5SZWRpczogcmV2b2tlU2Vzc2lvbihzZXNzaW9uSWQpCiAgICBhY3RpdmF0ZSBSZWRpcwogICAgUmVkaXMtLT4-U2VydmVyOiBBY2tub3dsZWRnZSBzZXNzaW9uIGRlbGV0ZWQKICAgIGRlYWN0aXZhdGUgUmVkaXMKICAgIE5vdGUgb3ZlciBTZXJ2ZXI6IENsZWFyIEh0dHBPbmx5IHNlc3Npb24gY29va2llCiAgICBTZXJ2ZXItPj5DbGllbnQ6IFJlc3BvbnNlOiB7IG1lc3NhZ2U6ICJMb2dnZWQgb3V0ISIgfQogICAgZGVhY3RpdmF0ZSBTZXJ2ZXIi alt="Complete Authentication Lifecycle Sequence Diagram" width="700" />
+</p>
 
 ---
 

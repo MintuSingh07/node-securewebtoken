@@ -1,6 +1,6 @@
 {
   "name": "secure-web-token",
-  "version": "2.1.0",
+  "version": "2.1.2",
   "description": "A secure, encrypted, device-bound authentication token library for Node.js — the best alternative to JWT with AES-256-GCM encryption, device fingerprinting, and true logout support.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
