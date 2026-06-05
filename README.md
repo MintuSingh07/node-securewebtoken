@@ -214,34 +214,27 @@ const decrypted = await verify(token, PUBLIC_KEY_PEM, {
 To protect against total session hijacking (where an attacker steals *both* the HttpOnly cookie and the bearer token), you can bind the session to a **non-exportable cryptographic key pair** generated directly in the user's browser using the **Web Crypto API**.
 
 #### Step 1: Generate Keys & Sign Request on the Frontend (Browser)
+Using the built-in browser-compatible client helper:
+
 ```javascript
+import { generateDpopKey, createDpopHeaders } from "secure-web-token/client";
+
 // 1. Generate a non-exportable ECDSA key pair in browser memory
-const keyPair = await window.crypto.subtle.generateKey(
-  { name: "ECDSA", namedCurve: "P-256" },
-  false, // extractable: false (CRITICAL: Private key cannot be read by JS/XSS!)
-  ["sign", "verify"]
-);
+const { publicKeyJwk, privateKey } = await generateDpopKey();
 
-// Export the Public Key as JWK to register on the backend during login
-const jwkPublicKey = await window.crypto.subtle.exportKey("jwk", keyPair.publicKey);
+// Save/send publicKeyJwk to register on the backend during login
 
-// 2. Before making a request, sign a dynamic proof payload
-const clientPayload = JSON.stringify({
-  url: "/api/auth/profile",
-  method: "GET",
-  timestamp: Math.floor(Date.now() / 1000) // Anti-replay timestamp window
+// 2. Before making an authorized request, sign and generate the DPoP headers
+const dpopHeaders = await createDpopHeaders(privateKey, "/api/auth/profile", "GET");
+// Returns: { "x-client-signature": "...", "x-client-payload": "..." }
+
+// Attach these headers to your API request
+const response = await fetch("/api/auth/profile", {
+  headers: {
+    ...dpopHeaders,
+    "Authorization": `Bearer ${token}`
+  }
 });
-
-const encoder = new TextEncoder();
-const signatureBuffer = await window.crypto.subtle.sign(
-  { name: "ECDSA", hash: { name: "SHA-256" } },
-  keyPair.privateKey,
-  encoder.encode(clientPayload)
-);
-
-// Base64URL encode the signature
-const clientSignature = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer)))
-  .replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
 ```
 
 #### Step 2: Register & Verify on the Backend (Node)
