@@ -1,6 +1,6 @@
 {
   "name": "secure-web-token",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "A secure, encrypted, device-bound authentication token library for Node.js — the best alternative to JWT with AES-256-GCM encryption, device fingerprinting, and true logout support.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -11,11 +11,13 @@
     },
     "./client": {
       "types": "./dist/client.d.ts",
+      "import": "./dist/client.mjs",
+      "require": "./dist/client.js",
       "default": "./dist/client.js"
     }
   },
   "scripts": {
-    "build": "tsc && node -e \"const fs = require('fs'); fs.writeFileSync('dist/index.mjs', 'import index from \\\"./index.js\\\";\\\\nexport const { sign, verify, refresh, swtMiddleware, getStore, RedisStore, MemoryStore } = index;\\\\nexport default index;\\\\n')\"",
+    "build": "tsc && npx tsc src/client.ts --target ES2020 --module ES2020 --moduleResolution node --declaration false --outDir dist/tmp_esm && mv dist/tmp_esm/client.js dist/client.mjs && rm -rf dist/tmp_esm && node -e \"const fs = require('fs'); fs.writeFileSync('dist/index.mjs', 'import index from \\\"./index.js\\\";\\\\nexport const { sign, verify, refresh, swtMiddleware, getStore, RedisStore, MemoryStore } = index;\\\\nexport default index;\\\\n')\"",
     "prepublishOnly": "npm run build",
     "test": "node test.js"
   },
