@@ -1,16 +1,18 @@
 /**
  * Schema for stored session details.
+ * Sessions live in Redis for revocation (true logout) and admin management.
+ * DPoP key binding (jkt) is stored alongside the session for cross-verification.
  */
 export interface Session {
     sessionId: string;
     userId: string | number;
-    deviceId: string;
-    fingerprint: string;
-    clientPublicKey?: string;
+    /** JWK Thumbprint — present when DPoP (fingerprint) binding is enabled */
+    jkt?: string;
 }
 
 /**
  * Interface for session storage backends.
+ * In v3, only RedisStore implements this interface.
  */
 export interface Store {
     /**
@@ -32,4 +34,3 @@ export interface Store {
      */
     revokeSession(sessionId: string): Promise<void> | void;
 }
-

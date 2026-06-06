@@ -1,56 +1,48 @@
 import * as crypto from "crypto";
 import decrypt from "./decrypt";
 import { timingSafeEqual, base64urlDecode } from "./utils";
-import { getStore, StoreType, Store } from "./store";
+import { Store } from "./store";
 import { AuditLogger, logEvent } from "./audit";
+import { verifyDpopProof } from "./dpop";
 
 /**
  * Options for verifying a Secure Web Token.
  */
 export interface VerifyOptions {
   /**
-   * The session ID to verify against the store. Should be retrieved from an HttpOnly cookie.
+   * The session ID to verify against Redis. Should be retrieved from an HttpOnly cookie.
+   * When provided, the session must exist in the store (revocation check).
    */
-  sessionId?: string; // read from HttpOnly cookie
+  sessionId?: string;
   /**
-   * Whether session/device verification is enabled.
+   * Redis store instance for session revocation checks.
+   * Required when sessionId is provided.
    */
-  fingerprint?: boolean;
+  store?: Store;
   /**
-   * The unique client fingerprint string (e.g., User-Agent or IP).
+   * The self-contained DPoP proof string from the client's `x-dpop-proof` header.
+   * Required when the token contains a DPoP binding (cnf.jkt).
    */
-  clientFingerprint?: string;
+  dpopProof?: string;
   /**
-   * The store type or store instance used to retrieve session data.
+   * Separate payload decryption key. Mandatory if using asymmetric keys.
    */
-  store?: StoreType | Store;
+  encryptionSecret?: string;
   /**
    * Optional logger callback for security and audit events.
    */
   auditLogger?: AuditLogger;
-  /**
-   * Separate payload decryption key. Mandatory if using asymmetric keys and verifier needs to decrypt.
-   */
-  encryptionSecret?: string;
-  /**
-   * Optional browser-generated signature (DPoP) for request proof-of-possession.
-   */
-  clientSignature?: string;
-  /**
-   * The plaintext payload (JSON string containing timestamp/URL/method) signed by the browser.
-   */
-  clientPayload?: string;
 }
 
 /**
  * Verifies and decrypts a Secure Web Token (SWT).
- * 
+ *
  * @param token - The SWT string to verify.
  * @param secretOrPublicKey - The secret key (or PEM Public Key) used for decryption and signature verification.
  * @param options - Verification options.
- * 
+ *
  * @returns The decrypted payload data.
- * @throws {Error} If the token is invalid, expired, or session/DPoP verification fails.
+ * @throws {Error} If the token is invalid, expired, session is revoked, or DPoP verification fails.
  */
 export default async function verify(
   token: string,
@@ -106,63 +98,28 @@ export default async function verify(
     if (payload.exp < now) throw new Error("Token expired");
     if (!payload.data || typeof payload.data !== "object") throw new Error("Invalid payload");
 
-    const store = typeof options.store === "string" ? getStore(options.store) : options.store;
+    // Session revocation check (Redis)
+    if (options.sessionId) {
+      if (!options.store) throw new Error("Store is required when sessionId is provided");
 
-    // Server-side session verification
-    if (payload.fp || options.sessionId || options.fingerprint) {
-      if (!options.sessionId) {
-        throw new Error("Session ID is required for device-bound tokens");
-      }
-      if (!store) throw new Error("No store available");
-
-      const session = await store.getSession(options.sessionId);
+      const session = await options.store.getSession(options.sessionId);
       if (!session) throw new Error("Session revoked or invalid");
       if (session.userId !== payload.data.userId) throw new Error("User mismatch");
 
-      const expectedFingerprint = options.clientFingerprint ?? payload.fp;
-      if (session.fingerprint !== expectedFingerprint) throw new Error("Device mismatch");
-
-      // DPoP Verification if a public key was bound to this session
-      if (session.clientPublicKey) {
-        if (!options.clientSignature || !options.clientPayload) {
-          throw new Error("Client signature required for secure binding");
-        }
-
-        // Validate client signature payload format and timestamp (anti-replay)
-        let parsedPayload: Record<string, any>;
-        try {
-          parsedPayload = JSON.parse(options.clientPayload);
-        } catch {
-          throw new Error("Invalid client payload format");
-        }
-
-        if (!parsedPayload.timestamp || Math.abs(now - parsedPayload.timestamp) > 300) {
-          throw new Error("Client payload timestamp expired or invalid");
-        }
-
-        // Verify the browser signature using the registered client public key (JWK)
-        try {
-          const clientJwk = JSON.parse(session.clientPublicKey);
-          const clientKeyObject = crypto.createPublicKey({
-            key: clientJwk,
-            format: 'jwk'
-          });
-
-          const clientVerifier = crypto.createVerify("SHA256");
-          clientVerifier.update(options.clientPayload);
-          const isClientSigValid = clientVerifier.verify(
-            clientKeyObject,
-            options.clientSignature,
-            "base64url"
-          );
-
-          if (!isClientSigValid) {
-            throw new Error("Client signature verification failed");
-          }
-        } catch (jwkErr: any) {
-          throw new Error(`DPoP verification failed: ${jwkErr.message}`);
+      // Cross-check DPoP thumbprint stored in Redis vs token payload
+      if (session.jkt && payload.cnf?.jkt) {
+        if (session.jkt !== payload.cnf.jkt) {
+          throw new Error("DPoP key binding mismatch between session and token");
         }
       }
+    }
+
+    // DPoP proof-of-possession verification (when token is DPoP-bound)
+    if (payload.cnf && payload.cnf.jkt) {
+      if (!options.dpopProof) {
+        throw new Error("DPoP proof required for this token");
+      }
+      verifyDpopProof(options.dpopProof, payload.cnf.jkt);
     }
 
     // Trigger audit log success event

@@ -14,28 +14,6 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getStore = getStore;
-const memoryStore_1 = require("./memoryStore");
-// Re-export store modules
+// Re-export store modules (Redis only in v3)
 __exportStar(require("./types"), exports);
-__exportStar(require("./memoryStore"), exports);
 __exportStar(require("./redisStore"), exports);
-/**
- * Retrieves a session store instance by type.
- *
- * Note: To retrieve the "redis" store, you must instantiate it directly
- * with a client instance: new RedisStore(redisClient).
- *
- * @param type - The type of store to retrieve (e.g., 'memory').
- * @returns The store instance or null if no type is provided or the type is invalid.
- */
-function getStore(type) {
-    if (!type)
-        return null;
-    switch (type) {
-        case "memory":
-            return memoryStore_1.memoryStore;
-        default:
-            return null;
-    }
-}

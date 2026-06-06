@@ -1,10 +1,13 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.RedisStore = void 0;
-const memoryStore_1 = require("./memoryStore");
 /**
- * Pluggable Resilient Redis store adapter with In-Memory failover.
- * Works with ioredis, redis (npm library), or any client that supports standard get/set/del.
+ * Redis-backed session store for SWT.
+ * Provides true logout and admin session revocation capabilities.
+ * Works with ioredis, redis (npm), or any client supporting standard get/set/del.
+ *
+ * Errors propagate directly — if Redis is unreachable, operations fail
+ * with clear error messages rather than silently degrading.
  */
 class RedisStore {
     constructor(client, options = {}) {
@@ -13,7 +16,6 @@ class RedisStore {
         }
         this.client = client;
         this.options = options;
-        this.fallbackStore = new memoryStore_1.MemoryStore();
     }
     getKey(sessionId) {
         const prefix = this.options.prefix ?? "swt:session:";
@@ -24,27 +26,24 @@ class RedisStore {
         const ttl = this.options.ttl ?? 86400; // default 24h
         const dataStr = JSON.stringify(session);
         try {
-            if (typeof this.client.set === "function") {
-                try {
-                    const res = this.client.set(key, dataStr, { EX: ttl });
-                    if (res instanceof Promise)
-                        await res;
-                }
-                catch (err) {
-                    // Fallback to position arguments (ioredis style)
-                    const res = this.client.set(key, dataStr, "EX", ttl);
-                    if (res instanceof Promise)
-                        await res;
-                }
-            }
-            else {
+            if (typeof this.client.set !== "function") {
                 throw new Error("Redis client does not support .set() method");
             }
+            try {
+                // node-redis style: set(key, value, { EX: ttl })
+                const res = this.client.set(key, dataStr, { EX: ttl });
+                if (res instanceof Promise)
+                    await res;
+            }
+            catch {
+                // ioredis style: set(key, value, "EX", ttl)
+                const res = this.client.set(key, dataStr, "EX", ttl);
+                if (res instanceof Promise)
+                    await res;
+            }
         }
-        catch (redisErr) {
-            console.warn(`[secure-web-token] REDIS ERROR: Failed to register session in Redis. ` +
-                `Falling back to In-Memory store. Error: ${redisErr.message}`);
-            this.fallbackStore.registerSession(session);
+        catch (err) {
+            throw new Error(`[secure-web-token] Redis error during session registration: ${err.message}`);
         }
     }
     async getSession(sessionId) {
@@ -55,10 +54,8 @@ class RedisStore {
             }
             const data = this.client.get(key);
             const resolvedData = data instanceof Promise ? await data : data;
-            if (!resolvedData) {
-                // Fallback check (in case session was saved in fallback store due to pre-existing redis outage)
-                return this.fallbackStore.getSession(sessionId);
-            }
+            if (!resolvedData)
+                return null;
             try {
                 return JSON.parse(resolvedData);
             }
@@ -66,10 +63,8 @@ class RedisStore {
                 return null;
             }
         }
-        catch (redisErr) {
-            console.warn(`[secure-web-token] REDIS ERROR: Failed to get session from Redis. ` +
-                `Falling back to In-Memory store. Error: ${redisErr.message}`);
-            return this.fallbackStore.getSession(sessionId);
+        catch (err) {
+            throw new Error(`[secure-web-token] Redis error during session retrieval: ${err.message}`);
         }
     }
     async revokeSession(sessionId) {
@@ -82,13 +77,8 @@ class RedisStore {
             if (res instanceof Promise)
                 await res;
         }
-        catch (redisErr) {
-            console.warn(`[secure-web-token] REDIS ERROR: Failed to revoke session in Redis. ` +
-                `Falling back to In-Memory store. Error: ${redisErr.message}`);
-        }
-        finally {
-            // Always guarantee revocation in fallback store as well
-            this.fallbackStore.revokeSession(sessionId);
+        catch (err) {
+            throw new Error(`[secure-web-token] Redis error during session revocation: ${err.message}`);
         }
     }
 }

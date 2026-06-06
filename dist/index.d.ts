@@ -1,12 +1,13 @@
 /**
- * Secure Web Token (SWT)
- * Encrypted, device-bound alternative to JWT
+ * Secure Web Token (SWT) v3.0
+ * Encrypted, DPoP-bound alternative to JWT
  */
 export { default as sign } from "./sign";
 export { default as verify } from "./verify";
 export { default as refresh } from "./refresh";
 export { swtMiddleware } from "./middleware";
-export { getStore, StoreType, Store, Session, RedisStore, RedisStoreOptions, MemoryStore } from "./store";
+export { Store, Session, RedisStore, RedisStoreOptions } from "./store";
+export { computeJwkThumbprint } from "./dpop";
 export { AuditLogger, AuditLogEvent, AuditEventName } from "./audit";
 export type { SignOptions } from "./sign";
 export type { VerifyOptions } from "./verify";

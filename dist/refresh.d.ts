@@ -1,4 +1,4 @@
-import { StoreType, Store } from "./store";
+import { Store } from "./store";
 import { AuditLogger } from "./audit";
 /**
  * Options for refreshing a Secure Web Token.
@@ -13,21 +13,23 @@ export interface RefreshOptions {
      */
     refreshExpiresIn?: number;
     /**
-     * The session ID to verify against the store (retrieved from HttpOnly cookie).
+     * The session ID to verify against Redis (retrieved from HttpOnly cookie).
      */
     sessionId?: string;
     /**
-     * Whether session/device verification is enabled.
+     * Redis store instance for session revocation checks and new session registration.
      */
-    fingerprint?: boolean;
+    store?: Store;
     /**
-     * The unique client fingerprint string (e.g., User-Agent or IP).
+     * The self-contained DPoP proof string from the client's `x-dpop-proof` header.
+     * Required when refreshing a DPoP-bound token.
      */
-    clientFingerprint?: string;
+    dpopProof?: string;
     /**
-     * The store type or store instance used for session verification.
+     * The client's public key (JWK format) to bind the new tokens.
+     * Required when refreshing a DPoP-bound token.
      */
-    store?: StoreType | Store;
+    clientPublicKey?: string | Record<string, any>;
     /**
      * Optional logger callback for security and audit events.
      */

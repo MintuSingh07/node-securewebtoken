@@ -1,9 +1,9 @@
 import * as crypto from "crypto";
 import encrypt from "./encrypt";
 import { base64urlEncode } from "./utils";
-import { generateDeviceId } from "./device";
-import { getStore, StoreType, Store } from "./store";
+import { Store } from "./store";
 import { AuditLogger, logEvent } from "./audit";
+import { computeJwkThumbprint } from "./dpop";
 
 /**
  * Options for signing a Secure Web Token.
@@ -14,17 +14,22 @@ export interface SignOptions {
    */
   expiresIn?: number;
   /**
-   * Whether to enable fingerprint/session mode. If true, generates a device-bound session.
+   * Whether to enable DPoP (Proof-of-Possession) binding.
+   * When true, requires `clientPublicKey` and `store`.
+   * Under the hood: computes JWK Thumbprint, embeds cnf.jkt in the token,
+   * and registers the binding in Redis for session revocation.
    */
   fingerprint?: boolean;
   /**
-   * The unique client fingerprint string (e.g., User-Agent or IP).
+   * The client's public key (JWK format) from the browser's Web Crypto API.
+   * Required when fingerprint is true. Accepts a JWK object or JSON string.
    */
-  clientFingerprint?: string;
+  clientPublicKey?: string | Record<string, any>;
   /**
-   * The store type or store instance to use for session persistence.
+   * Redis store instance for session persistence and revocation.
+   * Required when fingerprint is true.
    */
-  store?: StoreType | Store;
+  store?: Store;
   /**
    * Whether to generate a refresh token alongside the access token.
    */
@@ -34,34 +39,22 @@ export interface SignOptions {
    */
   refreshExpiresIn?: number;
   /**
-   * Optional logger callback for security and audit events.
-   */
-  auditLogger?: AuditLogger;
-  /**
-   * Pre-existing device ID to bind. If not provided and fingerprint is true, generates a new one.
-   */
-  deviceId?: string;
-  /**
-   * Pre-existing session ID to bind.
-   */
-  sessionId?: string;
-  /**
-   * Separate payload encryption key. Mandatory if using asymmetric keys and verifier needs to decrypt.
+   * Separate payload encryption key. Mandatory if using asymmetric keys.
    */
   encryptionSecret?: string;
   /**
-   * Optional browser-generated public key (JWK format) for DPoP binding.
+   * Optional logger callback for security and audit events.
    */
-  clientPublicKey?: string;
+  auditLogger?: AuditLogger;
 }
 
 /**
  * Signs a payload to create a Secure Web Token (SWT).
- * 
- * @param data - The object to be encrypted in the token. Must include `userId` if using fingerprint/session mode.
+ *
+ * @param data - The object to be encrypted in the token. Must include `userId`.
  * @param secretOrPrivateKey - The secret key (or PEM Private Key) used for encryption and signing.
  * @param options - Configuration options for the token.
- * 
+ *
  * @returns An object containing the generated `token`, optional `sessionId`, and optional `refreshToken`.
  */
 export default async function sign(
@@ -72,7 +65,13 @@ export default async function sign(
 
   if (!secretOrPrivateKey || typeof secretOrPrivateKey !== "string") throw new Error("Secret or Private Key required");
   if (!data || typeof data !== "object") throw new Error("Data must be object");
-  if (!data.userId) throw new Error("data.userId is required for session mode");
+  if (!data.userId) throw new Error("data.userId is required");
+
+  // Fingerprint mode requires both store and clientPublicKey
+  if (options.fingerprint) {
+    if (!options.store) throw new Error("Store (RedisStore) is required when fingerprint is enabled");
+    if (!options.clientPublicKey) throw new Error("clientPublicKey is required when fingerprint is enabled");
+  }
 
   const isPem = secretOrPrivateKey.includes("-----BEGIN");
   const encSecret = options.encryptionSecret || secretOrPrivateKey;
@@ -86,32 +85,31 @@ export default async function sign(
     exp,
   };
 
+  // DPoP binding: compute JWK Thumbprint and embed in encrypted payload
+  let jkt: string | undefined;
+  if (options.fingerprint) {
+    const jwk = typeof options.clientPublicKey === "string"
+      ? JSON.parse(options.clientPublicKey as string)
+      : options.clientPublicKey;
+    jkt = computeJwkThumbprint(jwk);
+    payload.cnf = { jkt };
+  }
+
+  // Session registration in Redis (for revocation + DPoP key binding)
   let sessionId: string | undefined;
-  let deviceId: string | undefined;
-
-  // Backend-only device/session mode
-  if (options.fingerprint || options.deviceId) {
-    deviceId = options.deviceId ?? generateDeviceId();
-    payload.fp = deviceId;
-    sessionId = options.sessionId ?? crypto.randomUUID();
-
-    // Resolve store instance (support direct Store injection or store type string)
-    const store = typeof options.store === "string" ? getStore(options.store) : options.store;
-    if (store && !options.sessionId) {
-      await store.registerSession({
-        sessionId,
-        userId: data.userId,
-        deviceId,
-        fingerprint: options.clientFingerprint ?? deviceId,
-        clientPublicKey: options.clientPublicKey, // Save DPoP public key
-      });
-    }
+  if (options.store) {
+    sessionId = crypto.randomUUID();
+    await options.store.registerSession({
+      sessionId,
+      userId: data.userId,
+      ...(jkt ? { jkt } : {}),
+    });
   }
 
   const header = {
     alg: isPem ? "RS256" : "AES-256-GCM+HMAC",
     typ: "SWT",
-    exp, // Exposed in plain text header for fast expiration verification
+    exp, // Exposed in header for fast pre-decryption expiry check
   };
 
   const encodedHeader = base64urlEncode(JSON.stringify(header));
@@ -143,8 +141,9 @@ export default async function sign(
       isRefresh: true,
     };
 
-    if (deviceId) {
-      refreshPayload.fp = deviceId;
+    // Bind refresh token to the same DPoP key
+    if (jkt) {
+      refreshPayload.cnf = { jkt };
     }
 
     const refreshHeader = {
@@ -177,7 +176,6 @@ export default async function sign(
     event: "sign",
     userId: data.userId,
     sessionId,
-    deviceId,
   });
 
   return {

@@ -1,6 +1,6 @@
 import verify from "./verify";
 import sign from "./sign";
-import { StoreType, Store } from "./store";
+import { Store } from "./store";
 import { AuditLogger, logEvent } from "./audit";
 
 /**
@@ -16,21 +16,23 @@ export interface RefreshOptions {
    */
   refreshExpiresIn?: number;
   /**
-   * The session ID to verify against the store (retrieved from HttpOnly cookie).
+   * The session ID to verify against Redis (retrieved from HttpOnly cookie).
    */
   sessionId?: string;
   /**
-   * Whether session/device verification is enabled.
+   * Redis store instance for session revocation checks and new session registration.
    */
-  fingerprint?: boolean;
+  store?: Store;
   /**
-   * The unique client fingerprint string (e.g., User-Agent or IP).
+   * The self-contained DPoP proof string from the client's `x-dpop-proof` header.
+   * Required when refreshing a DPoP-bound token.
    */
-  clientFingerprint?: string;
+  dpopProof?: string;
   /**
-   * The store type or store instance used for session verification.
+   * The client's public key (JWK format) to bind the new tokens.
+   * Required when refreshing a DPoP-bound token.
    */
-  store?: StoreType | Store;
+  clientPublicKey?: string | Record<string, any>;
   /**
    * Optional logger callback for security and audit events.
    */
@@ -39,11 +41,11 @@ export interface RefreshOptions {
 
 /**
  * Verifies a refresh token and generates a new access token and rotated refresh token.
- * 
+ *
  * @param refreshToken - The signed refresh token string.
  * @param secret - The secret key used for verification and signing.
  * @param options - Configuration options.
- * 
+ *
  * @returns An object containing the new `token`, optional `sessionId`, and new `refreshToken`.
  */
 export default async function refresh(
@@ -54,14 +56,12 @@ export default async function refresh(
   try {
     if (!refreshToken) throw new Error("Refresh token required");
 
-    // 1. Verify and decrypt the refresh token.
-    // If sessionId and clientFingerprint are provided, verify() will automatically check them.
+    // 1. Verify and decrypt the refresh token (including DPoP if bound)
     const payload = await verify(refreshToken, secret, {
       sessionId: options.sessionId,
-      fingerprint: options.fingerprint,
-      clientFingerprint: options.clientFingerprint,
       store: options.store,
-      auditLogger: options.auditLogger, // Let verify handle audit logging internally
+      dpopProof: options.dpopProof,
+      auditLogger: options.auditLogger,
     });
 
     // 2. Assert that this is indeed a refresh token
@@ -74,8 +74,14 @@ export default async function refresh(
       throw new Error("Invalid refresh token payload: missing userId");
     }
 
-    // 3. Generate a new rotated Access Token and new Refresh Token.
-    // Reuse the exact same device/session ID so we don't duplicate sessions or break XSS cookies.
+    // 3. Determine if the token was DPoP-bound
+    const hasDpop = !!(payload.cnf && payload.cnf.jkt);
+
+    if (hasDpop && !options.clientPublicKey) {
+      throw new Error("clientPublicKey is required to refresh a DPoP-bound token");
+    }
+
+    // 4. Generate new rotated Access Token and Refresh Token
     const result = await sign(
       { userId },
       secret,
@@ -83,9 +89,8 @@ export default async function refresh(
         expiresIn: options.expiresIn,
         generateRefreshToken: true,
         refreshExpiresIn: options.refreshExpiresIn,
-        fingerprint: !!payload.fp,
-        deviceId: payload.fp, // Keep the same device fingerprint binding!
-        sessionId: options.sessionId, // Keep the same session ID!
+        fingerprint: hasDpop,
+        clientPublicKey: hasDpop ? options.clientPublicKey : undefined,
         store: options.store,
         auditLogger: options.auditLogger,
       }
@@ -96,13 +101,10 @@ export default async function refresh(
       event: "refresh",
       userId,
       sessionId: options.sessionId,
-      deviceId: payload.fp,
     });
 
     return result;
   } catch (err: any) {
-    // Audit log failure is already handled inside verify() if it failed there,
-    // but if it failed in step 2 or 3, we log a verify_failure here:
     await logEvent(options.auditLogger, {
       event: "verify_failure",
       sessionId: options.sessionId,

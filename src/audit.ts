@@ -25,10 +25,6 @@ export interface AuditLogEvent {
    */
   sessionId?: string;
   /**
-   * The unique device identifier, if device binding is used.
-   */
-  deviceId?: string;
-  /**
    * Explanatory text, typically populated for failures.
    */
   reason?: string;

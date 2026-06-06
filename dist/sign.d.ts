@@ -1,4 +1,4 @@
-import { StoreType, Store } from "./store";
+import { Store } from "./store";
 import { AuditLogger } from "./audit";
 /**
  * Options for signing a Secure Web Token.
@@ -9,17 +9,22 @@ export interface SignOptions {
      */
     expiresIn?: number;
     /**
-     * Whether to enable fingerprint/session mode. If true, generates a device-bound session.
+     * Whether to enable DPoP (Proof-of-Possession) binding.
+     * When true, requires `clientPublicKey` and `store`.
+     * Under the hood: computes JWK Thumbprint, embeds cnf.jkt in the token,
+     * and registers the binding in Redis for session revocation.
      */
     fingerprint?: boolean;
     /**
-     * The unique client fingerprint string (e.g., User-Agent or IP).
+     * The client's public key (JWK format) from the browser's Web Crypto API.
+     * Required when fingerprint is true. Accepts a JWK object or JSON string.
      */
-    clientFingerprint?: string;
+    clientPublicKey?: string | Record<string, any>;
     /**
-     * The store type or store instance to use for session persistence.
+     * Redis store instance for session persistence and revocation.
+     * Required when fingerprint is true.
      */
-    store?: StoreType | Store;
+    store?: Store;
     /**
      * Whether to generate a refresh token alongside the access token.
      */
@@ -29,30 +34,18 @@ export interface SignOptions {
      */
     refreshExpiresIn?: number;
     /**
-     * Optional logger callback for security and audit events.
-     */
-    auditLogger?: AuditLogger;
-    /**
-     * Pre-existing device ID to bind. If not provided and fingerprint is true, generates a new one.
-     */
-    deviceId?: string;
-    /**
-     * Pre-existing session ID to bind.
-     */
-    sessionId?: string;
-    /**
-     * Separate payload encryption key. Mandatory if using asymmetric keys and verifier needs to decrypt.
+     * Separate payload encryption key. Mandatory if using asymmetric keys.
      */
     encryptionSecret?: string;
     /**
-     * Optional browser-generated public key (JWK format) for DPoP binding.
+     * Optional logger callback for security and audit events.
      */
-    clientPublicKey?: string;
+    auditLogger?: AuditLogger;
 }
 /**
  * Signs a payload to create a Secure Web Token (SWT).
  *
- * @param data - The object to be encrypted in the token. Must include `userId` if using fingerprint/session mode.
+ * @param data - The object to be encrypted in the token. Must include `userId`.
  * @param secretOrPrivateKey - The secret key (or PEM Private Key) used for encryption and signing.
  * @param options - Configuration options for the token.
  *

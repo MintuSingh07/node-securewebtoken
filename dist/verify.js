@@ -40,8 +40,8 @@ exports.default = verify;
 const crypto = __importStar(require("crypto"));
 const decrypt_1 = __importDefault(require("./decrypt"));
 const utils_1 = require("./utils");
-const store_1 = require("./store");
 const audit_1 = require("./audit");
+const dpop_1 = require("./dpop");
 /**
  * Verifies and decrypts a Secure Web Token (SWT).
  *
@@ -50,7 +50,7 @@ const audit_1 = require("./audit");
  * @param options - Verification options.
  *
  * @returns The decrypted payload data.
- * @throws {Error} If the token is invalid, expired, or session/DPoP verification fails.
+ * @throws {Error} If the token is invalid, expired, session is revoked, or DPoP verification fails.
  */
 async function verify(token, secretOrPublicKey, options = {}) {
     try {
@@ -99,56 +99,28 @@ async function verify(token, secretOrPublicKey, options = {}) {
             throw new Error("Token expired");
         if (!payload.data || typeof payload.data !== "object")
             throw new Error("Invalid payload");
-        const store = typeof options.store === "string" ? (0, store_1.getStore)(options.store) : options.store;
-        // Server-side session verification
-        if (payload.fp || options.sessionId || options.fingerprint) {
-            if (!options.sessionId) {
-                throw new Error("Session ID is required for device-bound tokens");
-            }
-            if (!store)
-                throw new Error("No store available");
-            const session = await store.getSession(options.sessionId);
+        // Session revocation check (Redis)
+        if (options.sessionId) {
+            if (!options.store)
+                throw new Error("Store is required when sessionId is provided");
+            const session = await options.store.getSession(options.sessionId);
             if (!session)
                 throw new Error("Session revoked or invalid");
             if (session.userId !== payload.data.userId)
                 throw new Error("User mismatch");
-            const expectedFingerprint = options.clientFingerprint ?? payload.fp;
-            if (session.fingerprint !== expectedFingerprint)
-                throw new Error("Device mismatch");
-            // DPoP Verification if a public key was bound to this session
-            if (session.clientPublicKey) {
-                if (!options.clientSignature || !options.clientPayload) {
-                    throw new Error("Client signature required for secure binding");
-                }
-                // Validate client signature payload format and timestamp (anti-replay)
-                let parsedPayload;
-                try {
-                    parsedPayload = JSON.parse(options.clientPayload);
-                }
-                catch {
-                    throw new Error("Invalid client payload format");
-                }
-                if (!parsedPayload.timestamp || Math.abs(now - parsedPayload.timestamp) > 300) {
-                    throw new Error("Client payload timestamp expired or invalid");
-                }
-                // Verify the browser signature using the registered client public key (JWK)
-                try {
-                    const clientJwk = JSON.parse(session.clientPublicKey);
-                    const clientKeyObject = crypto.createPublicKey({
-                        key: clientJwk,
-                        format: 'jwk'
-                    });
-                    const clientVerifier = crypto.createVerify("SHA256");
-                    clientVerifier.update(options.clientPayload);
-                    const isClientSigValid = clientVerifier.verify(clientKeyObject, options.clientSignature, "base64url");
-                    if (!isClientSigValid) {
-                        throw new Error("Client signature verification failed");
-                    }
-                }
-                catch (jwkErr) {
-                    throw new Error(`DPoP verification failed: ${jwkErr.message}`);
+            // Cross-check DPoP thumbprint stored in Redis vs token payload
+            if (session.jkt && payload.cnf?.jkt) {
+                if (session.jkt !== payload.cnf.jkt) {
+                    throw new Error("DPoP key binding mismatch between session and token");
                 }
             }
+        }
+        // DPoP proof-of-possession verification (when token is DPoP-bound)
+        if (payload.cnf && payload.cnf.jkt) {
+            if (!options.dpopProof) {
+                throw new Error("DPoP proof required for this token");
+            }
+            (0, dpop_1.verifyDpopProof)(options.dpopProof, payload.cnf.jkt);
         }
         // Trigger audit log success event
         await (0, audit_1.logEvent)(options.auditLogger, {

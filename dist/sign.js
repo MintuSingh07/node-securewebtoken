@@ -40,13 +40,12 @@ exports.default = sign;
 const crypto = __importStar(require("crypto"));
 const encrypt_1 = __importDefault(require("./encrypt"));
 const utils_1 = require("./utils");
-const device_1 = require("./device");
-const store_1 = require("./store");
 const audit_1 = require("./audit");
+const dpop_1 = require("./dpop");
 /**
  * Signs a payload to create a Secure Web Token (SWT).
  *
- * @param data - The object to be encrypted in the token. Must include `userId` if using fingerprint/session mode.
+ * @param data - The object to be encrypted in the token. Must include `userId`.
  * @param secretOrPrivateKey - The secret key (or PEM Private Key) used for encryption and signing.
  * @param options - Configuration options for the token.
  *
@@ -58,7 +57,14 @@ async function sign(data, secretOrPrivateKey, options = {}) {
     if (!data || typeof data !== "object")
         throw new Error("Data must be object");
     if (!data.userId)
-        throw new Error("data.userId is required for session mode");
+        throw new Error("data.userId is required");
+    // Fingerprint mode requires both store and clientPublicKey
+    if (options.fingerprint) {
+        if (!options.store)
+            throw new Error("Store (RedisStore) is required when fingerprint is enabled");
+        if (!options.clientPublicKey)
+            throw new Error("clientPublicKey is required when fingerprint is enabled");
+    }
     const isPem = secretOrPrivateKey.includes("-----BEGIN");
     const encSecret = options.encryptionSecret || secretOrPrivateKey;
     const now = Math.floor(Date.now() / 1000);
@@ -68,29 +74,29 @@ async function sign(data, secretOrPrivateKey, options = {}) {
         iat: now,
         exp,
     };
+    // DPoP binding: compute JWK Thumbprint and embed in encrypted payload
+    let jkt;
+    if (options.fingerprint) {
+        const jwk = typeof options.clientPublicKey === "string"
+            ? JSON.parse(options.clientPublicKey)
+            : options.clientPublicKey;
+        jkt = (0, dpop_1.computeJwkThumbprint)(jwk);
+        payload.cnf = { jkt };
+    }
+    // Session registration in Redis (for revocation + DPoP key binding)
     let sessionId;
-    let deviceId;
-    // Backend-only device/session mode
-    if (options.fingerprint || options.deviceId) {
-        deviceId = options.deviceId ?? (0, device_1.generateDeviceId)();
-        payload.fp = deviceId;
-        sessionId = options.sessionId ?? crypto.randomUUID();
-        // Resolve store instance (support direct Store injection or store type string)
-        const store = typeof options.store === "string" ? (0, store_1.getStore)(options.store) : options.store;
-        if (store && !options.sessionId) {
-            await store.registerSession({
-                sessionId,
-                userId: data.userId,
-                deviceId,
-                fingerprint: options.clientFingerprint ?? deviceId,
-                clientPublicKey: options.clientPublicKey, // Save DPoP public key
-            });
-        }
+    if (options.store) {
+        sessionId = crypto.randomUUID();
+        await options.store.registerSession({
+            sessionId,
+            userId: data.userId,
+            ...(jkt ? { jkt } : {}),
+        });
     }
     const header = {
         alg: isPem ? "RS256" : "AES-256-GCM+HMAC",
         typ: "SWT",
-        exp, // Exposed in plain text header for fast expiration verification
+        exp, // Exposed in header for fast pre-decryption expiry check
     };
     const encodedHeader = (0, utils_1.base64urlEncode)(JSON.stringify(header));
     const encryptedPayload = (0, encrypt_1.default)(payload, encSecret);
@@ -117,8 +123,9 @@ async function sign(data, secretOrPrivateKey, options = {}) {
             exp: refreshExp,
             isRefresh: true,
         };
-        if (deviceId) {
-            refreshPayload.fp = deviceId;
+        // Bind refresh token to the same DPoP key
+        if (jkt) {
+            refreshPayload.cnf = { jkt };
         }
         const refreshHeader = {
             alg: isPem ? "RS256" : "AES-256-GCM+HMAC",
@@ -147,7 +154,6 @@ async function sign(data, secretOrPrivateKey, options = {}) {
         event: "sign",
         userId: data.userId,
         sessionId,
-        deviceId,
     });
     return {
         token,

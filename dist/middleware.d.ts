@@ -1,4 +1,4 @@
-import { StoreType, Store } from "./store";
+import { Store } from "./store";
 import { AuditLogger } from "./audit";
 /**
  * Standard NextFunction type for Express middleware.
@@ -23,39 +23,26 @@ export interface MiddlewareOptions {
      */
     secret: string;
     /**
+     * Redis store instance for session revocation checks.
+     */
+    store?: Store;
+    /**
      * The cookie name used to store the sessionId. Defaults to "swt_session".
      */
     cookieName?: string;
     /**
-     * Pluggable store type or direct Store instance. Defaults to "memory".
+     * Separate payload decryption key. Mandatory if using asymmetric keys.
      */
-    store?: StoreType | Store;
-    /**
-     * Whether to require session verification from the store. If true, both bearer token
-     * and HttpOnly cookie matching are checked. Defaults to true.
-     */
-    requireSession?: boolean;
-    /**
-     * Whether to enable fingerprint/device verification. Defaults to true.
-     */
-    fingerprint?: boolean;
-    /**
-     * Custom function to extract device fingerprint from request headers or IP.
-     * If not provided, defaults to the request's User-Agent string (logs a security warning).
-     */
-    getFingerprint?: (req: any) => string;
+    encryptionSecret?: string;
     /**
      * Optional logger callback for security events.
      */
     auditLogger?: AuditLogger;
-    /**
-     * Separate payload decryption key. Mandatory if using asymmetric keys and verifier needs to decrypt.
-     */
-    encryptionSecret?: string;
 }
 /**
- * Express middleware helper to authenticate and verify Secure Web Tokens.
- * Automatically extracts the token and validates device fingerprinting & DPoP.
+ * Express middleware to authenticate and verify Secure Web Tokens.
+ * Automatically extracts Bearer token, session cookie, and DPoP proof header.
+ * All heavy lifting (signature, encryption, DPoP, session check) happens under the hood.
  *
  * @param options - Config options for the middleware.
  * @returns An Express-compatible middleware handler.

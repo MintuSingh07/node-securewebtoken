@@ -9,8 +9,10 @@ function getCrypto(): Crypto {
 }
 
 /**
- * Generates a browser-compatible P-256 ECDSA key pair.
- * Returns the public key as JWK and the private key as a CryptoKey object.
+ * Generates a browser-compatible P-256 ECDSA key pair for DPoP binding.
+ * The private key is non-exportable — it cannot be stolen via XSS.
+ *
+ * @returns Object containing the exportable public key JWK and the non-exportable private CryptoKey
  */
 export async function generateDpopKey(): Promise<{
   publicKeyJwk: JsonWebKey;
@@ -19,7 +21,7 @@ export async function generateDpopKey(): Promise<{
   const cryptoObj = getCrypto();
   const keyPair = await cryptoObj.subtle.generateKey(
     { name: "ECDSA", namedCurve: "P-256" },
-    false, // extractable: false (highly secure, cannot be stolen via XSS)
+    false, // non-exportable private key — cannot be stolen via XSS
     ["sign", "verify"]
   ) as CryptoKeyPair;
   const publicKeyJwk = await cryptoObj.subtle.exportKey("jwk", keyPair.publicKey);
@@ -30,47 +32,56 @@ export async function generateDpopKey(): Promise<{
 }
 
 /**
- * Signs the request payload and generates the DPoP signature and payload headers.
- * Converts the raw browser Web Crypto signature to ASN.1 DER format.
+ * Creates a self-contained DPoP proof for a specific request.
+ * The proof contains the public key, request metadata, and an ECDSA signature.
+ * Send this as the single `x-dpop-proof` header with your API request.
+ *
+ * @param privateKey - The non-exportable CryptoKey from generateDpopKey()
+ * @param publicKeyJwk - The public key JWK from generateDpopKey()
+ * @param url - The request URL being authorized
+ * @param method - The HTTP method (GET, POST, etc.)
+ * @returns Base64URL-encoded self-contained DPoP proof string
  */
-export async function createDpopHeaders(
+export async function createDpopProof(
   privateKey: CryptoKey,
+  publicKeyJwk: JsonWebKey,
   url: string,
   method: string
-): Promise<{
-  "x-client-signature": string;
-  "x-client-payload": string;
-}> {
+): Promise<string> {
   if (!privateKey) {
-    throw new Error("[secure-web-token] Private key is required to sign DPoP payload.");
+    throw new Error("[secure-web-token] Private key is required to create DPoP proof.");
   }
+
   const timestamp = Math.floor(Date.now() / 1000);
-  const clientPayloadObj = { url, method: method.toUpperCase(), timestamp };
-  const clientPayloadStr = JSON.stringify(clientPayloadObj);
+  const payloadObj = { url, method: method.toUpperCase(), timestamp };
+  const payloadStr = JSON.stringify(payloadObj);
 
   const encoder = new TextEncoder();
   const cryptoObj = getCrypto();
   const rawSignature = await cryptoObj.subtle.sign(
     { name: "ECDSA", hash: { name: "SHA-256" } },
     privateKey,
-    encoder.encode(clientPayloadStr)
+    encoder.encode(payloadStr)
   );
 
+  // Convert IEEE P1363 raw signature to ASN.1 DER format for Node.js compatibility
   const derSignature = rawToDer(rawSignature);
-  const signatureBase64 = btoa(String.fromCharCode(...derSignature));
-  const signatureBase64Url = signatureBase64
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=/g, "");
+  const signatureBase64Url = arrayBufferToBase64Url(derSignature);
 
-  return {
-    "x-client-signature": signatureBase64Url,
-    "x-client-payload": clientPayloadStr,
+  // Build self-contained proof: public key + payload + signature
+  const proof = {
+    jwk: publicKeyJwk,
+    payload: payloadStr,
+    signature: signatureBase64Url,
   };
+
+  // Base64URL encode the entire proof as a single header value
+  return stringToBase64Url(JSON.stringify(proof));
 }
 
 /**
- * Converts raw browser Web Crypto P-256 ECDSA signature (IEEE P1363 raw R/S concatenation) to ASN.1 DER format.
+ * Converts raw IEEE P1363 P-256 ECDSA signature to ASN.1 DER format.
+ * Required because Web Crypto outputs raw R||S but Node.js expects DER.
  */
 function rawToDer(rawSignatureBuffer: ArrayBuffer): Uint8Array {
   const raw = new Uint8Array(rawSignatureBuffer);
@@ -100,4 +111,21 @@ function rawToDer(rawSignatureBuffer: ArrayBuffer): Uint8Array {
     ...sBytes
   ];
   return new Uint8Array(derBytes);
+}
+
+/**
+ * Converts a Uint8Array to base64url string (browser-compatible, no Node.js Buffer).
+ */
+function arrayBufferToBase64Url(buffer: Uint8Array): string {
+  const base64 = btoa(String.fromCharCode(...buffer));
+  return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+}
+
+/**
+ * Converts a UTF-8 string to base64url (browser-compatible, no Node.js Buffer).
+ */
+function stringToBase64Url(str: string): string {
+  const encoder = new TextEncoder();
+  const bytes = encoder.encode(str);
+  return arrayBufferToBase64Url(bytes);
 }

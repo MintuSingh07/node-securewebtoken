@@ -1,5 +1,5 @@
 import verify from "./verify";
-import { getStore, StoreType, Store } from "./store";
+import { Store } from "./store";
 import { AuditLogger } from "./audit";
 
 /**
@@ -27,49 +27,33 @@ export interface MiddlewareOptions {
    */
   secret: string;
   /**
+   * Redis store instance for session revocation checks.
+   */
+  store?: Store;
+  /**
    * The cookie name used to store the sessionId. Defaults to "swt_session".
    */
   cookieName?: string;
   /**
-   * Pluggable store type or direct Store instance. Defaults to "memory".
+   * Separate payload decryption key. Mandatory if using asymmetric keys.
    */
-  store?: StoreType | Store;
-  /**
-   * Whether to require session verification from the store. If true, both bearer token
-   * and HttpOnly cookie matching are checked. Defaults to true.
-   */
-  requireSession?: boolean;
-  /**
-   * Whether to enable fingerprint/device verification. Defaults to true.
-   */
-  fingerprint?: boolean;
-  /**
-   * Custom function to extract device fingerprint from request headers or IP.
-   * If not provided, defaults to the request's User-Agent string (logs a security warning).
-   */
-  getFingerprint?: (req: any) => string;
+  encryptionSecret?: string;
   /**
    * Optional logger callback for security events.
    */
   auditLogger?: AuditLogger;
-  /**
-   * Separate payload decryption key. Mandatory if using asymmetric keys and verifier needs to decrypt.
-   */
-  encryptionSecret?: string;
 }
 
 /**
- * Express middleware helper to authenticate and verify Secure Web Tokens.
- * Automatically extracts the token and validates device fingerprinting & DPoP.
+ * Express middleware to authenticate and verify Secure Web Tokens.
+ * Automatically extracts Bearer token, session cookie, and DPoP proof header.
+ * All heavy lifting (signature, encryption, DPoP, session check) happens under the hood.
  *
  * @param options - Config options for the middleware.
  * @returns An Express-compatible middleware handler.
  */
 export function swtMiddleware(options: MiddlewareOptions) {
   const cookieName = options.cookieName ?? "swt_session";
-  const requireSession = options.requireSession ?? true;
-  const useFingerprint = options.fingerprint ?? true;
-  const storeInstance = typeof options.store === "string" ? getStore(options.store) : options.store;
 
   return async (req: any, res: any, next: NextFunction): Promise<void> => {
     try {
@@ -80,36 +64,20 @@ export function swtMiddleware(options: MiddlewareOptions) {
       }
 
       const token = authHeader.split(" ")[1];
+
+      // Auto-extract DPoP proof from header (if present)
+      const dpopProof = req.headers["x-dpop-proof"];
+
+      // Auto-extract session ID from HttpOnly cookie (for revocation check)
       const sessionId = req.cookies ? req.cookies[cookieName] : undefined;
 
-      let fingerprint: string | undefined;
-      if (requireSession && useFingerprint) {
-        if (options.getFingerprint) {
-          fingerprint = options.getFingerprint(req);
-        } else {
-          // Log developer security warning for default User-Agent fingerprinting fallback
-          console.warn(
-            "[secure-web-token] SECURITY WARNING: No custom getFingerprint function provided. " +
-            "Falling back to weak HTTP User-Agent fingerprinting which is vulnerable to device spoofing."
-          );
-          fingerprint = req.headers["user-agent"] || "";
-        }
-      }
-
-      // Extract client DPoP headers if present
-      const clientSignature = req.headers["x-client-signature"];
-      const clientPayload = req.headers["x-client-payload"];
-
-      // Verify the token using our core async verify function
+      // Verify token: signature, decryption, session, and DPoP — all automatic
       const payload = await verify(token, options.secret, {
-        sessionId: requireSession ? sessionId : undefined,
-        fingerprint: requireSession ? useFingerprint : undefined,
-        clientFingerprint: fingerprint,
-        store: requireSession ? (storeInstance || undefined) : undefined,
-        auditLogger: options.auditLogger,
+        sessionId: sessionId || undefined,
+        store: options.store || undefined,
+        dpopProof: typeof dpopProof === "string" ? dpopProof : undefined,
         encryptionSecret: options.encryptionSecret,
-        clientSignature: typeof clientSignature === "string" ? clientSignature : undefined,
-        clientPayload: typeof clientPayload === "string" ? clientPayload : undefined,
+        auditLogger: options.auditLogger,
       });
 
       // Attach decrypted payload data and session context to request object
