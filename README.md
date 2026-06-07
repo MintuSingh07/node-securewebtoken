@@ -55,24 +55,9 @@ SWT establishes a secure validation loop between the **Client (Browser)**, the *
 
 ### 1. The Token Issuance & DPoP Binding Flow (Login)
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor Client as Client Browser
-    participant Server as Application Server
-    participant Redis as Redis Session Store
-
-    Note over Client: 1. Generate non-exportable ECDSA Key Pair
-    Client->>Server: POST /api/auth/login (Credentials + Client Public Key JWK)
-    activate Server
-    Note over Server: 2. Authenticate User Credentials<br/>3. Compute JWK Thumbprint (jkt)<br/>4. Generate Session ID (UUID)<br/>5. Encrypt Payload & sign SWT (includes cnf.jkt)
-    Server->>Redis: registerSession({ sessionId, userId, jkt })
-    activate Redis
-    Redis-->>Server: Acknowledge session stored
-    deactivate Redis
-    Server-->>Client: 200 OK (JWT Alternative Token + HttpOnly Session Cookie)
-    deactivate Server
-```
+<p align="center">
+  <img src="https://mermaid.ink/svg/c2VxdWVuY2VEaWFncmFtCiAgICBhdXRvbnVtYmVyCiAgICBhY3RvciBDbGllbnQgYXMgQ2xpZW50IEJyb3dzZXIKICAgIHBhcnRpY2lwYW50IFNlcnZlciBhcyBBcHBsaWNhdGlvbiBTZXJ2ZXIKICAgIHBhcnRpY2lwYW50IFJlZGlzIGFzIFJlZGlzIFNlc3Npb24gU3RvcmUKCiAgICBOb3RlIG92ZXIgQ2xpZW50OiAxLiBHZW5lcmF0ZSBub24tZXhwb3J0YWJsZSBFQ0RTQSBLZXkgUGFpcgogICAgQ2xpZW50LT4-U2VydmVyOiBQT1NUIC9hcGkvYXV0aC9sb2dpbiAoQ3JlZGVudGlhbHMgKyBDbGllbnQgUHVibGljIEtleSBKV0spCiAgICBhY3RpdmF0ZSBTZXJ2ZXIKICAgIE5vdGUgb3ZlciBTZXJ2ZXI6IDIuIEF1dGhlbnRpY2F0ZSBVc2VyIENyZWRlbnRpYWxzPGJyLz4zLiBDb21wdXRlIEpXSyBUaHVtYnByaW50IChqa3QpPGJyLz40LiBHZW5lcmF0ZSBTZXNzaW9uIElEIChVVUlEKTxici8-NS4gRW5jcnlwdCBQYXlsb2FkICYgc2lnbiBTV1QgKGluY2x1ZGVzIGNuZi5qa3QpCiAgICBTZXJ2ZXItPj5SZWRpczogcmVnaXN0ZXJTZXNzaW9uKHsgc2Vzc2lvbklkLCB1c2VySWQsIGprdCB9KQogICAgYWN0aXZhdGUgUmVkaXMKICAgIFJlZGlzLS0-PlNlcnZlcjogQWNrbm93bGVkZ2Ugc2Vzc2lvbiBzdG9yZWQKICAgIGRlYWN0aXZhdGUgUmVkaXMKICAgIFNlcnZlci0tPj5DbGllbnQ6IDIwMCBPSyAoSldUIEFsdGVybmF0aXZlIFRva2VuICsgSHR0cE9ubHkgU2Vzc2lvbiBDb29raWUpCiAgICBkZWFjdGl2YXRlIFNlcnZlcg" alt="Token Issuance & DPoP Binding Flow" />
+</p>
 
 1. **Key Generation:** During app initialization or login, the frontend uses the native Web Crypto API to generate a cryptographic ECDSA (P-256) key pair. The private key is flagged as non-exportable so it cannot be read by any browser script or XSS attack.
 2. **Login Request:** The client sends the user credentials along with the serialized **Public Key JWK** to the backend login endpoint.
@@ -84,25 +69,9 @@ sequenceDiagram
 
 ### 2. The Token Verification & Proof-of-Possession Flow (API Request)
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor Client as Client Browser
-    participant Server as Application Server
-    participant Redis as Redis Session Store
-
-    Note over Client: 1. Sign Request Metadata using Private Key<br/>to generate DPoP Proof
-    Client->>Server: GET /api/profile (Authorization: Bearer + Cookie: sessionId + x-dpop-proof)
-    activate Server
-    Note over Server: 2. Fast Pre-Decryption Expiry Check (alg/exp)<br/>3. Verify HMAC signature & Decrypt payload<br/>4. Extract Session ID from cookie
-    Server->>Redis: getSession(sessionId)
-    activate Redis
-    Redis-->>Server: Return stored session (contains userId & jkt)
-    deactivate Redis
-    Note over Server: 5. Match user ID and check jkt binds<br/>6. Verify DPoP proof signature using public key JWK
-    Server-->>Client: 200 OK (Decrypted Protected Resource Data)
-    deactivate Server
-```
+<p align="center">
+  <img src="https://mermaid.ink/svg/c2VxdWVuY2VEaWFncmFtCiAgICBhdXRvbnVtYmVyCiAgICBhY3RvciBDbGllbnQgYXMgQ2xpZW50IEJyb3dzZXIKICAgIHBhcnRpY2lwYW50IFNlcnZlciBhcyBBcHBsaWNhdGlvbiBTZXJ2ZXIKICAgIHBhcnRpY2lwYW50IFJlZGlzIGFzIFJlZGlzIFNlc3Npb24gU3RvcmUKCiAgICBOb3RlIG92ZXIgQ2xpZW50OiAxLiBTaWduIFJlcXVlc3QgTWV0YWRhdGEgdXNpbmcgUHJpdmF0ZSBLZXk8YnIvPnRvIGdlbmVyYXRlIERQb1AgUHJvb2YKICAgIENsaWVudC0-PlNlcnZlcjogR0VUIC9hcGkvcHJvZmlsZSAoQXV0aG9yaXphdGlvbjogQmVhcmVyICsgQ29va2llOiBzZXNzaW9uSWQgKyB4LWRwb3AtcHJvb2YpCiAgICBhY3RpdmF0ZSBTZXJ2ZXIKICAgIE5vdGUgb3ZlciBTZXJ2ZXI6IDIuIEZhc3QgUHJlLURlY3J5cHRpb24gRXhwaXJ5IENoZWNrIChhbGcvZXhwKTxici8-My4gVmVyaWZ5IEhNQUMgc2lnbmF0dXJlICYgRGVjcnlwdCBwYXlsb2FkPGJyLz40LiBFeHRyYWN0IFNlc3Npb24gSUQgZnJvbSBjb29raWUKICAgIFNlcnZlci0-PlJlZGlzOiBnZXRTZXNzaW9uKHNlc3Npb25JZCkKICAgIGFjdGl2YXRlIFJlZGlzCiAgICBSZWRpcy0tPj5TZXJ2ZXI6IFJldHVybiBzdG9yZWQgc2Vzc2lvbiAoY29udGFpbnMgdXNlcklkICYgamt0KQogICAgZGVhY3RpdmF0ZSBSZWRpcwogICAgTm90ZSBvdmVyIFNlcnZlcjogNS4gTWF0Y2ggdXNlciBJRCBhbmQgY2hlY2sgamt0IGJpbmRzPGJyLz42LiBWZXJpZnkgRFBvUCBwcm9vZiBzaWduYXR1cmUgdXNpbmcgcHVibGljIGtleSBKV0sKICAgIFNlcnZlci0tPj5DbGllbnQ6IDIwMCBPSyAoRGVjcnlwdGVkIFByb3RlY3RlZCBSZXNvdXJjZSBEYXRhKQogICAgZGVhY3RpdmF0ZSBTZXJ2ZXI" alt="Token Verification & Proof-of-Possession Flow" />
+</p>
 
 1. **Request Signing (DPoP Proof):** For every API call, the client signs the destination URL, HTTP method, and a timestamp using its non-exportable private key to create a self-contained DPoP proof.
 2. **Protected Request:** The client attaches the DPoP proof header (`x-dpop-proof`) and the Bearer token (`Authorization: Bearer <token>`) to the request. The browser automatically appends the HttpOnly `sessionId` cookie.
